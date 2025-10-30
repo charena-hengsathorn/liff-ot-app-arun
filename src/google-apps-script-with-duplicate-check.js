@@ -2,8 +2,8 @@ var tz = "Asia/Bangkok";
 var submittedAt = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ss") + "+07:00";
 
 function getSpreadsheetIdByEnv(env) {
-  const devSpreadsheetId = '1GTCnTTuyFfDzfFTjXFbRWsPlmjxeHWlDnMZ76TIYEG4'; // DEV
-  const prodSpreadsheetId = '1Zi0FDvzpGSnUbegZh252q8KXLMtFwSj2q4kQvZclo4w'; // PROD
+  const devSpreadsheetId = '1diiYf4TaTLwsLA0O48xjwBSTC76BvOAS2woezN_Z4lQ'; // DEV
+  const prodSpreadsheetId = '1_ObqjB3eMOgbKmf3xvzQHeCttjyAUIn5meiu4nT0z34'; // PROD
   return env === 'dev' ? devSpreadsheetId : prodSpreadsheetId;
 }
 

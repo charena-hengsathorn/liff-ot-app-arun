@@ -13,19 +13,15 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: 'v4', auth });
 
-// Spreadsheet IDs - Updated with user's IDs
-const SPREADSHEET_IDS = {
-  dev: '1GTCnTTuyFfDzfFTjXFbRWsPlmjxeHWlDnMZ76TIYEG4', // DEV
-  prod: '1D7DdT4wpL6w3dbxxIaLl6S86mo9rY4sHvMgD98EpbtE'  // PROD
-};
+// Spreadsheet IDs from environment
+const SPREADSHEET_ID_DEV = process.env.VITE_GOOGLE_SHEET_ID_DEV;
+const SPREADSHEET_ID_PROD = process.env.VITE_GOOGLE_SHEET_ID_PROD;
 
 // Helper function to get spreadsheet ID by environment
 function getSpreadsheetId(env) {
-  console.log(`🔧 getSpreadsheetId called with env: ${env}`);
-  console.log(`🔧 SPREADSHEET_IDS[env]:`, SPREADSHEET_IDS[env]);
-  console.log(`🔧 SPREADSHEET_IDS.prod:`, SPREADSHEET_IDS.prod);
-  const result = SPREADSHEET_IDS[env] || SPREADSHEET_IDS.prod;
-  console.log(`🔧 getSpreadsheetId returning:`, result);
+  const targetEnv = env === 'dev' ? 'dev' : 'prod';
+  const result = targetEnv === 'dev' ? SPREADSHEET_ID_DEV : SPREADSHEET_ID_PROD;
+  console.log(`🔧 getSpreadsheetId(${env}) -> ${result}`);
   return result;
 }
 
@@ -1413,9 +1409,7 @@ export async function createMonthlySheet(env = 'dev', force = false, month = nul
     
     console.log(`🔧 Environment: ${env}`);
     console.log(`🔧 Spreadsheet ID: ${spreadsheetId}`);
-    console.log(`🔧 Available IDs:`, SPREADSHEET_IDS);
-    console.log(`🔧 Expected ID for ${env}:`, SPREADSHEET_IDS[env]);
-    console.log(`🔧 Is this the correct ID? ${spreadsheetId === SPREADSHEET_IDS[env] ? 'YES' : 'NO'}`);
+    console.log(`🔧 Using IDs from env: dev=${SPREADSHEET_ID_DEV}, prod=${SPREADSHEET_ID_PROD}`);
     
     // Generate sheet name from provided month/year or current date
     const monthNames = [

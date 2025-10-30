@@ -6,7 +6,7 @@ console.log('🔍 Testing LINE Notification Debug...\n');
 async function testNotification() {
   try {
     const testMessage = {
-      message: "🧪 TEST NOTIFICATION\n\n👤 Driver: Test Driver\n📅 Date: 1/8/2568\n🕒 Clock In: 08:00\n🕔 Clock Out: 18:00\n💬 Comments: Test notification\n\n📊 Google Sheets updated\n\n📄 View in Google Sheets:\nhttps://docs.google.com/spreadsheets/d/1D7DdT4wpL6w3dbxxIaLl6S86mo9rY4sHvMgD98EpbtE/edit",
+      message: "🧪 TEST NOTIFICATION\n\n👤 Driver: Test Driver\n📅 Date: 1/8/2568\n🕒 Clock In: 08:00\n🕔 Clock Out: 18:00\n💬 Comments: Test notification\n\n📊 Google Sheets updated\n\n📄 View in Google Sheets:\nhttps://docs.google.com/spreadsheets/d/1_ObqjB3eMOgbKmf3xvzQHeCttjyAUIn5meiu4nT0z34/edit",
       env: 'prod'
     };
 
