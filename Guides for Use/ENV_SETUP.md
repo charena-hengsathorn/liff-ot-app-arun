@@ -42,6 +42,8 @@ heroku config:set LINE_GROUP_ID_PROD=your_group_id --app liff-ot-app-raksaard-2d
 heroku config:set MANAGER_USER_IDS_DEV=user_id1,user_id2 --app liff-ot-app-raksaard-2de47d0ac48c
 heroku config:set MANAGER_USER_IDS_PROD=user_id1,user_id2 --app liff-ot-app-raksaard-2de47d0ac48c
 heroku config:set GOOGLE_SERVICE_ACCOUNT_KEY=your_base64_key --app liff-ot-app-raksaard-2de47d0ac48c
+heroku config:set STRAPI_URL=https://your-strapi-instance.com --app liff-ot-app-raksaard-2de47d0ac48c
+heroku config:set NODE_ENV=production --app liff-ot-app-raksaard-2de47d0ac48c
 ```
 
 ### 3. Automated Sync (Advanced)
@@ -76,6 +78,8 @@ node sync-env.js --heroku
 - `VITE_LIFF_ID` - Your LINE LIFF ID
 - `VITE_GOOGLE_SHEET_ID_DEV` - Development Google Sheet ID
 - `VITE_GOOGLE_SHEET_ID_PROD` - Production Google Sheet ID
+- `VITE_API_BASE_URL_DEV` - Development API base URL (default: `http://localhost:3001`)
+- `VITE_API_BASE_URL_PROD` - Production API base URL (default: auto-detected from Heroku)
 
 ### Backend (Node.js) - Heroku
 - `LINE_CHANNEL_ACCESS_TOKEN` - LINE Messaging API token
@@ -84,6 +88,8 @@ node sync-env.js --heroku
 - `MANAGER_USER_IDS_DEV` - Comma-separated manager user IDs for dev
 - `MANAGER_USER_IDS_PROD` - Comma-separated manager user IDs for prod
 - `GOOGLE_SERVICE_ACCOUNT_KEY` - Base64 encoded Google service account key
+- `STRAPI_URL` - Strapi API URL (default: `http://localhost:1337` for dev, set production URL in Heroku)
+- `NODE_ENV` - Node environment (`production` enables secure cookies, optional)
 
 ## Tips
 

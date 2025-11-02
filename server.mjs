@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import multer from 'multer';
 import { handleGoogleSheetsRequest, createMonthlySheet } from './src/googleSheetsHandler.js';
 import { setupAuthRoutes } from './src/login/authRoutes.js';
 
@@ -53,11 +54,38 @@ app.use(cors({
     'https://liff-ot-app-positive.herokuapp.com' // Heroku production
   ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // 24 hours
 }));
+// Handle OPTIONS preflight requests globally
+app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://localhost:3000',
+    'https://liff-ot-app-positive.vercel.app',
+    'https://liff-ot-app-positive.herokuapp.com'
+  ];
+  
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  res.sendStatus(204);
+});
+
 app.use(express.json());
 app.use(cookieParser());
+
+// Configure multer for file uploads (memory storage)
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Setup authentication routes (login, logout, /me)
 setupAuthRoutes(app, {
@@ -1085,10 +1113,44 @@ app.get('/api/drivers/name/:name', async (req, res) => {
   }
 });
 
+// Upload media to Strapi
+app.post('/api/upload', upload.single('files'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const FormData = (await import('form-data')).default;
+    
+    // Create form data to forward to Strapi
+    const formData = new FormData();
+    formData.append('files', req.file.buffer, {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype
+    });
+    
+    const response = await fetch(`${STRAPI_URL}/api/upload`, {
+      method: 'POST',
+      body: formData,
+      headers: formData.getHeaders()
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create a new driver
 app.post('/api/drivers', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
+    
+    // If data is already wrapped, use it; otherwise wrap it
+    const bodyData = req.body.data || req.body;
     
     const response = await fetch(`${STRAPI_URL}/api/drivers`, {
       method: 'POST',
@@ -1096,16 +1158,31 @@ app.post('/api/drivers', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        data: req.body
+        data: bodyData
       })
     });
     
     const data = await response.json();
+    
+    // Set CORS headers explicitly
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
     res.json(data);
   } catch (error) {
     console.error('Error creating driver:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// Handle OPTIONS preflight for drivers endpoint
+app.options('/api/drivers', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  res.sendStatus(204);
 });
 
 // Update a driver

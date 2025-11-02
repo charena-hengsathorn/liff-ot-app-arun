@@ -18,6 +18,7 @@ This app is now configured to use Heroku for the backend API while the frontend 
    heroku config:set MANAGER_USER_IDS_PROD=user_id1,user_id2
    heroku config:set VITE_GOOGLE_SHEET_ID_DEV=your_dev_sheet_id
    heroku config:set VITE_GOOGLE_SHEET_ID_PROD=your_prod_sheet_id
+   heroku config:set STRAPI_URL=https://your-strapi-app-name.herokuapp.com
    ```
 5. **Deploy**: `git push heroku main`
 6. **Start dyno**: `heroku ps:scale web=1`
@@ -30,6 +31,9 @@ This app is now configured to use Heroku for the backend API while the frontend 
 - **Check Existing**: `POST /check-existing`
 - **LINE Webhook**: `POST /webhook`
 - **LINE Notification**: `POST /notify-line`
+- **Login**: `POST /login` (proxies to Strapi)
+- **Logout**: `POST /logout`
+- **Get Current User**: `GET /me`
 
 ## Frontend (Vercel) - React App
 
@@ -52,6 +56,7 @@ This app is now configured to use Heroku for the backend API while the frontend 
 - `MANAGER_USER_IDS_PROD`: Comma-separated manager user IDs for prod
 - `VITE_GOOGLE_SHEET_ID_DEV`: Google Sheets ID for development
 - `VITE_GOOGLE_SHEET_ID_PROD`: Google Sheets ID for production
+- `STRAPI_URL`: Strapi API URL (e.g., `https://your-strapi-app-name.herokuapp.com`)
 
 ### Google Sheets Setup:
 - Ensure the Google Sheets service account has access to both dev and prod sheets

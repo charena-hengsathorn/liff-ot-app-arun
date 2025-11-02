@@ -1,2 +1,14 @@
 .vercel
 node_modules
+
+# Strapi (if installed in strapi/ folder)
+strapi/.tmp/
+strapi/build/
+strapi/.cache/
+strapi/dist/
+strapi/.env
+strapi/.env.local
+strapi/.env.production
+strapi/node_modules/
+strapi/database/*
+!strapi/database/.gitkeep

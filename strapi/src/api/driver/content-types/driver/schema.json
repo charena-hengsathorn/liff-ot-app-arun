@@ -23,6 +23,15 @@
     "phone": {
       "type": "string"
     },
+    "age": {
+      "type": "integer"
+    },
+    "photo": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
+      "allowedTypes": ["images"]
+    },
     "employeeId": {
       "type": "string",
       "unique": true

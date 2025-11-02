@@ -523,6 +523,7 @@ export interface ApiDriverDriver extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
+    age: Schema.Attribute.Integer;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -539,6 +540,7 @@ export interface ApiDriverDriver extends Struct.CollectionTypeSchema {
       Schema.Attribute.Unique;
     notes: Schema.Attribute.Text;
     phone: Schema.Attribute.String;
+    photo: Schema.Attribute.Media<'images'>;
     publishedAt: Schema.Attribute.DateTime;
     status: Schema.Attribute.Enumeration<['active', 'inactive', 'on_leave']> &
       Schema.Attribute.DefaultTo<'active'>;

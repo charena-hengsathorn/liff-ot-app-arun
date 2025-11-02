@@ -971,10 +971,20 @@ function StyledForm() {
     return formatted;
   });
 
-  const drivers = [
+  const [drivers, setDrivers] = useState([
     "Jean",
     "Charena",
-  ];
+  ]);
+  
+  // Add Driver Modal State
+  const [showAddDriverModal, setShowAddDriverModal] = useState(false);
+  const [newDriver, setNewDriver] = useState({
+    name: '',
+    age: '',
+    photo: null,
+    photoPreview: null
+  });
+  const [isAddingDriver, setIsAddingDriver] = useState(false);
 
   // Debounce function for Google Sheets updates
   const debounce = (func, wait) => {
@@ -1208,6 +1218,116 @@ function StyledForm() {
   const API_BASE_URL = getEffectiveUIEnv() === 'dev'
     ? 'http://localhost:3001'
     : 'https://liff-ot-app-positive.herokuapp.com';
+
+  // Function to handle adding new driver
+  const handleAddDriver = async () => {
+    if (!newDriver.name.trim()) {
+      alert(browserLang === 'th' ? 'กรุณากรอกชื่อ' : 'Please enter a name');
+      return;
+    }
+
+    setIsAddingDriver(true);
+    
+    try {
+      let photoId = null;
+
+      // Upload photo to Strapi first if provided
+      if (newDriver.photo) {
+        const formData = new FormData();
+        formData.append('files', newDriver.photo);
+
+        const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const uploadResult = await uploadResponse.json();
+
+        if (uploadResponse.ok && uploadResult && uploadResult.length > 0) {
+          // Strapi returns array of uploaded files, get the first one's ID
+          photoId = uploadResult[0].id || uploadResult[0]?.id;
+          console.log('Photo uploaded successfully, ID:', photoId);
+        } else {
+          console.warn('Photo upload failed, continuing without photo');
+        }
+      }
+
+      // Create driver in Strapi with photo, name, and age
+      const driverData = {
+        name: newDriver.name.trim(),
+        age: newDriver.age ? parseInt(newDriver.age) : null,
+        status: 'active'
+      };
+
+      // Add photo if uploaded successfully (Strapi expects media ID)
+      if (photoId) {
+        driverData.photo = photoId;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/drivers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          data: driverData
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error?.message || result.error || 'Failed to create driver');
+      }
+
+      // Add to local drivers list
+      const driverName = result.data?.attributes?.name || result.data?.name || newDriver.name;
+      if (!drivers.includes(driverName)) {
+        setDrivers(prev => [...prev, driverName].sort());
+      }
+
+      // Reset form and close modal
+      setNewDriver({
+        name: '',
+        age: '',
+        photo: null,
+        photoPreview: null
+      });
+      setShowAddDriverModal(false);
+
+      // Show success message
+      alert(browserLang === 'th' 
+        ? `เพิ่ม ${driverName} สำเร็จ` 
+        : `Successfully added ${driverName}`);
+
+      // Auto-select the newly added driver
+      setFormData(prev => ({ ...prev, driverName }));
+      setCookie('driverName', driverName);
+
+    } catch (error) {
+      console.error('Error adding driver:', error);
+      alert(browserLang === 'th' 
+        ? `เกิดข้อผิดพลาด: ${error.message}` 
+        : `Error: ${error.message}`);
+    } finally {
+      setIsAddingDriver(false);
+    }
+  };
+
+  // Handle photo selection
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setNewDriver(prev => ({ ...prev, photo: file }));
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewDriver(prev => ({ ...prev, photoPreview: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const sheetId = getEffectiveUIEnv() === 'dev'
     ? import.meta.env.VITE_GOOGLE_SHEET_ID_DEV
@@ -2630,12 +2750,32 @@ function StyledForm() {
 
         {/* Driver Name Dropdown */}
         <div style={{ marginBottom: 16, position: 'relative' }}>
-          <label style={{ 
-            fontWeight: 500, 
-            color: isDarkMode ? "#f1f5f9" : undefined,
-            fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
-          }}>
-            {labels[browserLang]?.driverName || "Driver Name"} *
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+            <label style={{ 
+              fontWeight: 500, 
+              color: isDarkMode ? "#f1f5f9" : undefined,
+              fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
+            }}>
+              {labels[browserLang]?.driverName || "Driver Name"} *
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowAddDriverModal(true)}
+              style={{
+                padding: '4px 10px',
+                fontSize: '12px',
+                background: '#3b82f6',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              + {browserLang === 'th' ? "เพิ่ม" : "Add"}
+            </button>
+          </div>
+          <div>
             {/* Use custom dropdown for both mobile and desktop */}
             <>
               <button
@@ -2691,8 +2831,122 @@ function StyledForm() {
                 formatOption={opt => <span style={{ color: isDarkMode ? '#f1f5f9' : undefined }}>{opt}</span>}
               />
             </>
-          </label>
+          </div>
         </div>
+
+        {/* Add Driver Modal */}
+        {showAddDriverModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+              padding: '20px'
+            }}
+            onClick={() => !isAddingDriver && setShowAddDriverModal(false)}
+          >
+            <div
+              style={{
+                background: isDarkMode ? '#1e293b' : '#ffffff',
+                borderRadius: '16px',
+                padding: '24px',
+                maxWidth: '400px',
+                width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
+                boxSizing: 'border-box',
+                overflowX: 'hidden'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 style={{ marginTop: 0, marginBottom: '20px', fontSize: '20px', fontWeight: 600, color: isDarkMode ? '#f1f5f9' : '#111827' }}>
+                {browserLang === 'th' ? 'เพิ่มคนขับใหม่' : 'Add New Driver'}
+              </h2>
+
+              {/* Photo Upload */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: isDarkMode ? '#cbd5e1' : '#374151' }}>
+                  {browserLang === 'th' ? 'รูปภาพ' : 'Photo'}
+                </label>
+                {newDriver.photoPreview && (
+                  <div style={{ marginBottom: '12px', textAlign: 'center' }}>
+                    <img src={newDriver.photoPreview} alt="Preview" style={{ maxWidth: '100px', maxHeight: '100px', borderRadius: '8px', objectFit: 'cover' }} />
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  disabled={isAddingDriver}
+                  style={{ width: '100%', padding: '8px', border: `1px solid ${isDarkMode ? '#334155' : '#d1d5db'}`, borderRadius: '6px', background: isDarkMode ? '#0f172a' : '#ffffff', color: isDarkMode ? '#f1f5f9' : '#111827', fontSize: '14px' }}
+                />
+              </div>
+
+              {/* Name Field */}
+              <div style={{ marginBottom: '16px', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: isDarkMode ? '#cbd5e1' : '#374151' }}>
+                  {browserLang === 'th' ? 'ชื่อ' : 'Name'} *
+                </label>
+                <input
+                  type="text"
+                  value={newDriver.name}
+                  onChange={(e) => setNewDriver(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder={browserLang === 'th' ? 'กรอกชื่อ' : 'Enter name'}
+                  disabled={isAddingDriver}
+                  style={{ width: '100%', padding: '12px', border: `1px solid ${isDarkMode ? '#334155' : '#d1d5db'}`, borderRadius: '6px', background: isDarkMode ? '#0f172a' : '#ffffff', color: isDarkMode ? '#f1f5f9' : '#111827', fontSize: '16px', fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined, boxSizing: 'border-box', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                />
+              </div>
+
+              {/* Age Field */}
+              <div style={{ marginBottom: '24px', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500, color: isDarkMode ? '#cbd5e1' : '#374151' }}>
+                  {browserLang === 'th' ? 'อายุ' : 'Age'}
+                </label>
+                <input
+                  type="number"
+                  value={newDriver.age}
+                  onChange={(e) => setNewDriver(prev => ({ ...prev, age: e.target.value }))}
+                  placeholder={browserLang === 'th' ? 'กรอกอายุ' : 'Enter age'}
+                  disabled={isAddingDriver}
+                  min="0"
+                  style={{ width: '100%', padding: '12px', border: `1px solid ${isDarkMode ? '#334155' : '#d1d5db'}`, borderRadius: '6px', background: isDarkMode ? '#0f172a' : '#ffffff', color: isDarkMode ? '#f1f5f9' : '#111827', fontSize: '16px', fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined, boxSizing: 'border-box', maxWidth: '100%', overflow: 'hidden' }}
+                />
+              </div>
+
+              {/* Buttons */}
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDriverModal(false);
+                    setNewDriver({ name: '', age: '', photo: null, photoPreview: null });
+                  }}
+                  disabled={isAddingDriver}
+                  style={{ flex: 1, padding: '12px', background: isDarkMode ? '#334155' : '#e5e7eb', color: isDarkMode ? '#f1f5f9' : '#111827', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: 500, cursor: isAddingDriver ? 'not-allowed' : 'pointer', fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined }}
+                >
+                  {browserLang === 'th' ? 'ยกเลิก' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddDriver}
+                  disabled={isAddingDriver || !newDriver.name.trim()}
+                  style={{ flex: 1, padding: '12px', background: isAddingDriver || !newDriver.name.trim() ? (isDarkMode ? '#475569' : '#9ca3af') : '#3b82f6', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: 500, cursor: isAddingDriver || !newDriver.name.trim() ? 'not-allowed' : 'pointer', fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined }}
+                >
+                  {isAddingDriver ? (browserLang === 'th' ? 'กำลังเพิ่ม...' : 'Adding...') : (browserLang === 'th' ? 'เพิ่ม' : 'Add')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Loading Animation */}
         <LoadingAnimation isVisible={isLoadingData} size={60} isDarkMode={isDarkMode} />
