@@ -1,7 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 import { handleGoogleSheetsRequest, createMonthlySheet } from './src/googleSheetsHandler.js';
+import { setupAuthRoutes } from './src/login/authRoutes.js';
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
@@ -55,6 +57,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+app.use(cookieParser());
+
+// Setup authentication routes (login, logout, /me)
+setupAuthRoutes(app, {
+  strapiUrl: process.env.STRAPI_URL || 'http://localhost:1337'
+});
 
 // LINE Messaging API configuration
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -131,7 +139,7 @@ app.get('*', (req, res) => {
   console.log('=== CATCH-ALL: Serving route:', req.path);
   
   // Don't serve index.html for API routes
-  if (req.path.startsWith('/api/') || req.path.startsWith('/sheets') || req.path.startsWith('/submit') || req.path.startsWith('/clock-event') || req.path.startsWith('/check-existing') || req.path.startsWith('/webhook') || req.path.startsWith('/notify-line') || req.path.startsWith('/health')) {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/sheets') || req.path.startsWith('/submit') || req.path.startsWith('/clock-event') || req.path.startsWith('/check-existing') || req.path.startsWith('/webhook') || req.path.startsWith('/notify-line') || req.path.startsWith('/health') || req.path.startsWith('/login') || req.path.startsWith('/logout') || req.path.startsWith('/me')) {
     console.log('API route detected, returning 404');
     return res.status(404).json({ error: 'API endpoint not found' });
   }
@@ -842,6 +850,307 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV || 'development'
   });
+});
+
+// ==========================================
+// STRAPI CONTENT API EXAMPLES
+// ==========================================
+// These examples show how to connect to Strapi tables
+
+const STRAPI_URL = process.env.STRAPI_URL || 'http://localhost:1337';
+
+// Example 1: Get all attendance records from Strapi
+app.get('/api/attendances', async (req, res) => {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/attendances?populate=*`, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching attendances:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Example 2: Get a single attendance by ID
+app.get('/api/attendances/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/attendances/${id}?populate=*`, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Example 3: Create a new attendance record in Strapi
+app.post('/api/attendances', async (req, res) => {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/attendances`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        data: req.body
+      })
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error creating attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Example 4: Update an attendance record
+app.put('/api/attendances/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/attendances/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        data: req.body
+      })
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error updating attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Example 5: Delete an attendance record
+app.delete('/api/attendances/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/attendances/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error deleting attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Example 6: Query with filters (find attendances by driver name - legacy support)
+app.get('/api/attendances/driver/:driverName', async (req, res) => {
+  try {
+    const { driverName } = req.params;
+    const fetch = (await import('node-fetch')).default;
+    
+    // First try to find driver by name
+    const driverResponse = await fetch(
+      `${STRAPI_URL}/api/drivers?filters[name][$eq]=${encodeURIComponent(driverName)}&populate=*`,
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    const driverData = await driverResponse.json();
+    
+    if (driverData.data && driverData.data.length > 0) {
+      const driverId = driverData.data[0].id;
+      
+      // Find attendances by driver relation
+      const response = await fetch(
+        `${STRAPI_URL}/api/attendances?filters[driver][id][$eq]=${driverId}&populate=*`,
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      const data = await response.json();
+      res.json(data);
+    } else {
+      // Fallback to driverName string field for backward compatibility
+      const response = await fetch(
+        `${STRAPI_URL}/api/attendances?filters[driverName][$eq]=${encodeURIComponent(driverName)}&populate=*`,
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      const data = await response.json();
+      res.json(data);
+    }
+  } catch (error) {
+    console.error('Error fetching attendances by driver:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==========================================
+// DRIVER API ENDPOINTS
+// ==========================================
+
+// Get all drivers
+app.get('/api/drivers', async (req, res) => {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching drivers:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get a single driver by ID
+app.get('/api/drivers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/drivers/${id}?populate=*`, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching driver:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get driver by name
+app.get('/api/drivers/name/:name', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(
+      `${STRAPI_URL}/api/drivers?filters[name][$eq]=${encodeURIComponent(name)}&populate=*`,
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching driver by name:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create a new driver
+app.post('/api/drivers', async (req, res) => {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/drivers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        data: req.body
+      })
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error creating driver:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update a driver
+app.put('/api/drivers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/drivers/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        data: req.body
+      })
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error updating driver:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a driver
+app.delete('/api/drivers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fetch = (await import('node-fetch')).default;
+    
+    const response = await fetch(`${STRAPI_URL}/api/drivers/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error deleting driver:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, () => {

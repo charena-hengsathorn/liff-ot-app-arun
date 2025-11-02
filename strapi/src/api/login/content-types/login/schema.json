@@ -1,0 +1,65 @@
+{
+  "kind": "collectionType",
+  "collectionName": "logins",
+  "info": {
+    "singularName": "login",
+    "pluralName": "logins",
+    "displayName": "Login History",
+    "description": "Track login attempts, sessions, and authentication history"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "loginStatus": {
+      "type": "enumeration",
+      "enum": [
+        "success",
+        "failed",
+        "blocked"
+      ],
+      "default": "success",
+      "required": true
+    },
+    "loginAttemptAt": {
+      "type": "datetime",
+      "required": true
+    },
+    "ipAddress": {
+      "type": "string"
+    },
+    "userAgent": {
+      "type": "text"
+    },
+    "rememberMe": {
+      "type": "boolean",
+      "default": false
+    },
+    "sessionDuration": {
+      "type": "integer",
+      "description": "Session duration in milliseconds"
+    },
+    "logoutAt": {
+      "type": "datetime"
+    },
+    "failureReason": {
+      "type": "string",
+      "description": "Reason for failed login (e.g., 'Invalid password', 'User not found')"
+    },
+    "deviceInfo": {
+      "type": "json",
+      "description": "Additional device/browser information"
+    },
+    "location": {
+      "type": "json",
+      "description": "Geographic location if available"
+    }
+  }
+}
