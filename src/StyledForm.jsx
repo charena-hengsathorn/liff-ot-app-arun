@@ -971,10 +971,8 @@ function StyledForm() {
     return formatted;
   });
 
-  const [drivers, setDrivers] = useState([
-    "Jean",
-    "Charena",
-  ]);
+  const [drivers, setDrivers] = useState([]);
+  const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
   
   // Add Driver Modal State
   const [showAddDriverModal, setShowAddDriverModal] = useState(false);
@@ -1215,9 +1213,51 @@ function StyledForm() {
   const formatComments = (value) => value ? value : "Add Comments";
 
   // API Configuration - Heroku backend
-  const API_BASE_URL = getEffectiveUIEnv() === 'dev'
+  // Use localhost if we're running locally, regardless of UI env setting
+  const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const API_BASE_URL = (isLocalDev || getEffectiveUIEnv() === 'dev')
     ? 'http://localhost:3001'
     : 'https://liff-ot-app-positive.herokuapp.com';
+
+  // Function to fetch drivers from Strapi
+  const fetchDrivers = async () => {
+    setIsLoadingDrivers(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/drivers`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch drivers');
+      }
+
+      const result = await response.json();
+      
+      // Extract driver names from Strapi response
+      // Strapi v5 returns data in result.data array, each item has attributes.name
+      const driverNames = result.data?.map(driver => 
+        driver.attributes?.name || driver.name
+      ).filter(Boolean) || [];
+
+      console.log('Fetched drivers from Strapi:', driverNames);
+      setDrivers(driverNames.sort());
+    } catch (error) {
+      console.error('Error fetching drivers:', error);
+      // Fallback to empty array or show error
+      setDrivers([]);
+    } finally {
+      setIsLoadingDrivers(false);
+    }
+  };
+
+  // Fetch drivers on component mount
+  useEffect(() => {
+    fetchDrivers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Function to handle adding new driver
   const handleAddDriver = async () => {
@@ -1277,14 +1317,22 @@ function StyledForm() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error?.message || result.error || 'Failed to create driver');
+        console.error('Driver creation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          result: result
+        });
+        const errorMessage = result.error?.message || result.error?.error?.message || result.error || JSON.stringify(result) || 'Failed to create driver';
+        throw new Error(errorMessage);
       }
 
-      // Add to local drivers list
+      console.log('Driver created successfully:', result);
+
+      // Refresh drivers list from Strapi to get the latest data
+      await fetchDrivers();
+
+      // Get the driver name for auto-selection
       const driverName = result.data?.attributes?.name || result.data?.name || newDriver.name;
-      if (!drivers.includes(driverName)) {
-        setDrivers(prev => [...prev, driverName].sort());
-      }
 
       // Reset form and close modal
       setNewDriver({

@@ -162,22 +162,7 @@ app.post('/create-monthly-sheet', async (req, res) => {
   }
 });
 
-// Simple catch-all route for SPA
-app.get('*', (req, res) => {
-  console.log('=== CATCH-ALL: Serving route:', req.path);
-  
-  // Don't serve index.html for API routes
-  if (req.path.startsWith('/api/') || req.path.startsWith('/sheets') || req.path.startsWith('/submit') || req.path.startsWith('/clock-event') || req.path.startsWith('/check-existing') || req.path.startsWith('/webhook') || req.path.startsWith('/notify-line') || req.path.startsWith('/health') || req.path.startsWith('/login') || req.path.startsWith('/logout') || req.path.startsWith('/me')) {
-    console.log('API route detected, returning 404');
-    return res.status(404).json({ error: 'API endpoint not found' });
-  }
-  
-
-  
-  // Serve the React app for all other routes
-  console.log('Serving React app from dist/index.html');
-  res.sendFile('dist/index.html', { root: '.' });
-});
+// Note: Catch-all route moved to end of file (before app.listen)
 
 // Unified endpoint for all Google Sheets operations
 app.post('/sheets', async (req, res) => {
@@ -1056,6 +1041,8 @@ app.get('/api/drivers', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
     
+    console.log('Fetching drivers from Strapi:', `${STRAPI_URL}/api/drivers?populate=*`);
+    
     const response = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
       headers: {
         'Content-Type': 'application/json'
@@ -1063,9 +1050,23 @@ app.get('/api/drivers', async (req, res) => {
     });
     
     const data = await response.json();
+    
+    console.log('Strapi drivers response status:', response.status);
+    console.log('Strapi drivers response:', JSON.stringify(data, null, 2));
+    
+    // Set CORS headers
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+    
     res.json(data);
   } catch (error) {
     console.error('Error fetching drivers:', error);
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
     res.status(500).json({ error: error.message });
   }
 });
@@ -1152,6 +1153,9 @@ app.post('/api/drivers', async (req, res) => {
     // If data is already wrapped, use it; otherwise wrap it
     const bodyData = req.body.data || req.body;
     
+    console.log('Creating driver in Strapi:', JSON.stringify(bodyData, null, 2));
+    console.log('Strapi URL:', STRAPI_URL);
+    
     const response = await fetch(`${STRAPI_URL}/api/drivers`, {
       method: 'POST',
       headers: {
@@ -1164,6 +1168,17 @@ app.post('/api/drivers', async (req, res) => {
     
     const data = await response.json();
     
+    console.log('Strapi response status:', response.status);
+    console.log('Strapi response data:', JSON.stringify(data, null, 2));
+    
+    if (!response.ok) {
+      console.error('Strapi error response:', data);
+      // Set CORS headers even on error
+      res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      return res.status(response.status).json(data);
+    }
+    
     // Set CORS headers explicitly
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
@@ -1171,6 +1186,8 @@ app.post('/api/drivers', async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Error creating driver:', error);
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
     res.status(500).json({ error: error.message });
   }
 });
@@ -1228,6 +1245,22 @@ app.delete('/api/drivers/:id', async (req, res) => {
     console.error('Error deleting driver:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// Simple catch-all route for SPA - MUST BE LAST (after all API routes)
+app.get('*', (req, res) => {
+  console.log('=== CATCH-ALL: Serving route:', req.path);
+  
+  // Don't serve index.html for API routes - let them be handled by specific routes above
+  if (req.path.startsWith('/api/') || req.path.startsWith('/sheets') || req.path.startsWith('/submit') || req.path.startsWith('/clock-event') || req.path.startsWith('/check-existing') || req.path.startsWith('/webhook') || req.path.startsWith('/notify-line') || req.path.startsWith('/health') || req.path.startsWith('/login') || req.path.startsWith('/logout') || req.path.startsWith('/me')) {
+    // If we reach here, the route wasn't handled by any specific route above
+    console.log('API route not found, returning 404:', req.path);
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  
+  // Serve the React app for all other routes
+  console.log('Serving React app from dist/index.html');
+  res.sendFile('dist/index.html', { root: '.' });
 });
 
 app.listen(PORT, () => {
