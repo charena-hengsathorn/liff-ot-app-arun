@@ -1,0 +1,57 @@
+{
+  "kind": "collectionType",
+  "collectionName": "months",
+  "info": {
+    "singularName": "month",
+    "pluralName": "months",
+    "displayName": "Month",
+    "description": "Monthly periods for organizing login history and other time-based data"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "year": {
+      "type": "integer",
+      "required": true,
+      "min": 2000,
+      "max": 3000
+    },
+    "month": {
+      "type": "integer",
+      "required": true,
+      "min": 1,
+      "max": 12
+    },
+    "monthName": {
+      "type": "string",
+      "required": true,
+      "description": "Month name (e.g., 'January 2024', 'มกราคม 2567')"
+    },
+    "startDate": {
+      "type": "date",
+      "required": true,
+      "description": "First day of the month"
+    },
+    "endDate": {
+      "type": "date",
+      "required": true,
+      "description": "Last day of the month"
+    },
+    "thaiYear": {
+      "type": "integer",
+      "description": "Thai Buddhist year (e.g., 2567 for 2024)"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this month is currently active"
+    },
+    "notes": {
+      "type": "text",
+      "description": "Additional notes about this month"
+    }
+  }
+}
+

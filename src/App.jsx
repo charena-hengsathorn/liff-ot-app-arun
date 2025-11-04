@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import StyledForm from "./StyledForm";
 import LoginForm from "./login/LoginForm.standalone";
+import ManagerView from "./ManagerView";
 
 // Protected route wrapper
 const ProtectedRoute = ({ children }) => {
@@ -8,21 +9,29 @@ const ProtectedRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" replace />;
 };
 
+// Shared protected component
+const ProtectedForm = () => (
+  <ProtectedRoute>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <StyledForm />
+    </div>
+  </ProtectedRoute>
+);
+
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginForm />} />
-      <Route 
-        path="/" 
-        element={
-          <ProtectedRoute>
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-              <StyledForm />
-            </div>
-          </ProtectedRoute>
-        } 
-      />
-      {/* Fallback to login for any unmatched routes */}
+      {/* Root path */}
+      <Route path="/" element={<ProtectedForm />} />
+      {/* Language-specific paths */}
+      <Route path="/th" element={<ProtectedForm />} />
+      <Route path="/en" element={<ProtectedForm />} />
+      {/* Prod path */}
+      <Route path="/prod" element={<ProtectedForm />} />
+      {/* Manager view */}
+      <Route path="/manager" element={<ProtectedRoute><ManagerView /></ProtectedRoute>} />
+      {/* Fallback to login for any other unmatched routes */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

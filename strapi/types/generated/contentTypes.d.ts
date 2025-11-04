@@ -583,6 +583,7 @@ export interface ApiLoginLogin extends Struct.CollectionTypeSchema {
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'success'>;
     logoutAt: Schema.Attribute.DateTime;
+    month: Schema.Attribute.Relation<'manyToOne', 'api::month.month'>;
     publishedAt: Schema.Attribute.DateTime;
     rememberMe: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     sessionDuration: Schema.Attribute.Integer;
@@ -595,6 +596,55 @@ export interface ApiLoginLogin extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Required;
     userAgent: Schema.Attribute.Text;
+  };
+}
+
+export interface ApiMonthMonth extends Struct.CollectionTypeSchema {
+  collectionName: 'months';
+  info: {
+    description: 'Monthly periods for organizing login history and other time-based data';
+    displayName: 'Month';
+    pluralName: 'months';
+    singularName: 'month';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    endDate: Schema.Attribute.Date & Schema.Attribute.Required;
+    isActive: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::month.month'> &
+      Schema.Attribute.Private;
+    month: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          max: 12;
+          min: 1;
+        },
+        number
+      >;
+    monthName: Schema.Attribute.String & Schema.Attribute.Required;
+    notes: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    startDate: Schema.Attribute.Date & Schema.Attribute.Required;
+    thaiYear: Schema.Attribute.Integer;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    year: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          max: 3000;
+          min: 2000;
+        },
+        number
+      >;
   };
 }
 
@@ -1111,6 +1161,7 @@ declare module '@strapi/strapi' {
       'api::attendance.attendance': ApiAttendanceAttendance;
       'api::driver.driver': ApiDriverDriver;
       'api::login.login': ApiLoginLogin;
+      'api::month.month': ApiMonthMonth;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

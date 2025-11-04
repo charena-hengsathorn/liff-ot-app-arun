@@ -196,53 +196,8 @@ export function getSheetNameFromDate(thaiDate) {
   return targetSheetName;
 }
 
-// Check if entry exists in Google Sheets
-export async function checkExistingEntry(driverName, thaiDate, env = 'prod') {
-  try {
-    const spreadsheetId = getSpreadsheetId(env);
-    const targetSheetName = getSheetNameFromDate(thaiDate);
-    const range = formatSheetRange(targetSheetName, 'A:B'); // Driver name and date columns
-    
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
-
-    const values = response.data.values || [];
-    
-    console.log(`🔍 Checking for driver: "${driverName}", date: "${thaiDate}"`);
-    
-    // Check for existing row with same driver and date
-    for (let i = 1; i < values.length; i++) { // skip header
-      const rowDriver = values[i][0];
-      const rowDate = values[i][1];
-      
-      console.log(`Row ${i + 1}: driver="${rowDriver}", date="${rowDate}"`);
-      console.log(`Comparing: "${rowDriver}" === "${driverName}" && "${rowDate}" === "${thaiDate}"`);
-      
-      if (rowDriver === driverName && rowDate === thaiDate) {
-        console.log(`✅ Found match at row ${i + 1}`);
-        return { 
-          success: true,
-          exists: true, 
-          row: i + 1 
-        };
-      }
-    }
-    
-    console.log(`❌ No match found`);
-    return { 
-      success: true,
-      exists: false 
-    };
-  } catch (error) {
-    console.error('Error checking existing entry:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}
+// Check if entry exists in Google Sheets (optimized - now uses checkAndGetRowByDriverAndDate)
+// Original implementation removed - see checkAndGetRowByDriverAndDate for the optimized version
 
 // Submit with clock times
 export async function submitWithClockTimes(data) {
@@ -525,189 +480,152 @@ export async function handleClockEvent(data) {
     let otEnd = '';
     let otHours = '';
 
-    // Check for existing entry
-    const existingCheck = await checkExistingEntry(driverName, thaiDate, env);
-    const targetSheetName = getSheetNameFromDate(thaiDate);
+    // Optimized: Use checkAndGetRowByDriverAndDate to get row data AND existence in one call
+    const rowCheck = await checkAndGetRowByDriverAndDate(driverName, thaiDate, env, language);
+    const targetSheetName = rowCheck.targetSheetName || getSheetNameFromDate(thaiDate);
+    const hasNewStructure = rowCheck.hasNewStructure || false;
     
-    // Detect sheet structure to determine column positions
-    const hasNewStructure = await detectSheetStructure(spreadsheetId, targetSheetName);
-    
-    if (existingCheck.exists) {
-      // Update existing row - use correct column based on sheet structure
-      const column = type === 'clockIn' ? (hasNewStructure ? 'D' : 'C') : (hasNewStructure ? 'E' : 'D');
+    if (rowCheck.exists && rowCheck.row) {
+      // We already have the row data, so no need to fetch it again!
+      const rowData = rowCheck.row;
+      const rowIndex = rowCheck.rowIndex;
       
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: formatSheetRange(targetSheetName, `${column}${existingCheck.row}`),
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[timestamp]]
-        }
+      // Extract clock in time from existing row data
+      const clockInTime = hasNewStructure ? rowData[3] : rowData[2]; // Column D for new structure, C for old
+      const currentClockOutTime = hasNewStructure ? rowData[4] : rowData[3]; // Column E for new structure, D for old
+      const clockOutTime = type === 'clockOut' ? timestamp : currentClockOutTime;
+
+      console.log(`📊 Row data: Clock In=${clockInTime}, Clock Out=${clockOutTime}`);
+
+      // Prepare all updates in a single batch
+      const updates = [];
+      
+      // Update clock in or clock out
+      const timeColumn = type === 'clockIn' ? (hasNewStructure ? 'D' : 'C') : (hasNewStructure ? 'E' : 'D');
+      updates.push({
+        range: formatSheetRange(targetSheetName, `${timeColumn}${rowIndex}`),
+        values: [[timestamp]]
       });
 
-      // If clocking out, calculate and save OT hours
-      if (type === 'clockOut') {
-        console.log(`🔍 Processing clock out for ${driverName} at ${timestamp}`);
-        
-        // Get the current row data to check clock in time
-        const rowResponse = await sheets.spreadsheets.values.get({
-          spreadsheetId,
-          range: formatSheetRange(targetSheetName, hasNewStructure ? `A${existingCheck.row}:K${existingCheck.row}` : `A${existingCheck.row}:J${existingCheck.row}`),
-        });
-
-        const rowData = rowResponse.data.values[0];
-        const clockInTime = hasNewStructure ? rowData[3] : rowData[2]; // Column D for new structure, C for old
-        const clockOutTime = timestamp;
-
-        console.log(`📊 Row data: Clock In=${clockInTime}, Clock Out=${clockOutTime}`);
-
-        // Calculate OT hours if clock out time is after 17:00
-        if (clockOutTime) {
-          // Check business rule: No OT calculation from 25th to end of month
-          if (!isOTCalculationAllowed(thaiDate)) {
-            console.log(`🚫 OT calculation skipped due to business rule: Date ${thaiDate} is on or after 25th of month`);
-            otStart = '';
-            otEnd = '';
-            otHours = '';
+      // Calculate OT hours if clocking out
+      if (type === 'clockOut' && clockOutTime) {
+        // Check business rule: No OT calculation from 25th to end of month
+        if (!isOTCalculationAllowed(thaiDate)) {
+          console.log(`🚫 OT calculation skipped due to business rule: Date ${thaiDate} is on or after 25th of month`);
+          otStart = '';
+          otEnd = '';
+          otHours = '';
+        } else {
+          const clockInTimeObj = new Date(`2000-01-01T${clockInTime}:00`);
+          const clockOutTimeObj = new Date(`2000-01-01T${clockOutTime}:00`);
+          const morningOTEndTimeObj = new Date(`2000-01-01T08:00:00`);
+          const eveningOTStartTimeObj = new Date(`2000-01-01T17:00:00`);
+          
+          let morningOTHours = 0;
+          let eveningOTHours = 0;
+          let totalOTHours = 0;
+          let otStartTime = '';
+          let otEndTime = '';
+          
+          // Calculate early morning OT (if clock in before 8:00 AM)
+          if (clockInTimeObj < morningOTEndTimeObj) {
+            const morningDiffMs = morningOTEndTimeObj.getTime() - clockInTimeObj.getTime();
+            morningOTHours = morningDiffMs / (1000 * 60 * 60);
+            console.log(`🌅 Early morning OT: Clock in ${clockInTime} to 08:00 = ${morningOTHours.toFixed(2)} hours`);
+          }
+          
+          // Calculate evening OT (if clock out after 17:00 PM)
+          if (clockOutTimeObj > eveningOTStartTimeObj) {
+            const eveningDiffMs = clockOutTimeObj.getTime() - eveningOTStartTimeObj.getTime();
+            eveningOTHours = eveningDiffMs / (1000 * 60 * 60);
+            console.log(`🌆 Evening OT: 17:00 to clock out ${clockOutTime} = ${eveningOTHours.toFixed(2)} hours`);
+          }
+          
+          // Calculate total OT hours
+          totalOTHours = morningOTHours + eveningOTHours;
+          
+          if (totalOTHours > 0) {
+            // Set OT start and end times based on what OT periods exist
+            if (morningOTHours > 0 && eveningOTHours > 0) {
+              // Both morning and evening OT
+              otStartTime = clockInTime; // Start from actual clock in time
+              otEndTime = clockOutTime; // End at actual clock out time
+              console.log(`🕐 Combined OT: Morning ${morningOTHours.toFixed(2)}h + Evening ${eveningOTHours.toFixed(2)}h = ${totalOTHours.toFixed(2)}h total`);
+            } else if (morningOTHours > 0) {
+              // Only morning OT
+              otStartTime = clockInTime;
+              otEndTime = '08:00';
+              console.log(`🌅 Morning OT only: ${morningOTHours.toFixed(2)} hours`);
+            } else if (eveningOTHours > 0) {
+              // Only evening OT
+              otStartTime = '17:00';
+              otEndTime = clockOutTime;
+              console.log(`🌆 Evening OT only: ${eveningOTHours.toFixed(2)} hours`);
+            }
+            
+            otStart = otStartTime;
+            otEnd = otEndTime;
+            otHours = totalOTHours.toFixed(2); // Round to 2 decimal places
+            
+            console.log(`🧮 Total OT calculation: ${otHours} hours (Start: ${otStart}, End: ${otEnd})`);
+            
+            // Add OT updates to batch
+            const otStartCol = hasNewStructure ? 'F' : 'E';
+            const otEndCol = hasNewStructure ? 'G' : 'F';
+            const otHoursCol = hasNewStructure ? 'J' : 'I';
+            
+            updates.push(
+              { range: formatSheetRange(targetSheetName, `${otStartCol}${rowIndex}`), values: [[otStart]] },
+              { range: formatSheetRange(targetSheetName, `${otEndCol}${rowIndex}`), values: [[otEnd]] },
+              { range: formatSheetRange(targetSheetName, `${otHoursCol}${rowIndex}`), values: [[otHours]] }
+            );
           } else {
-            const clockInTimeObj = new Date(`2000-01-01T${clockInTime}:00`);
-            const clockOutTimeObj = new Date(`2000-01-01T${clockOutTime}:00`);
-            const morningOTEndTimeObj = new Date(`2000-01-01T08:00:00`);
-            const eveningOTStartTimeObj = new Date(`2000-01-01T17:00:00`);
-            
-            let morningOTHours = 0;
-            let eveningOTHours = 0;
-            let totalOTHours = 0;
-            let otStartTime = '';
-            let otEndTime = '';
-            
-            // Calculate early morning OT (if clock in before 8:00 AM)
-            if (clockInTimeObj < morningOTEndTimeObj) {
-              const morningDiffMs = morningOTEndTimeObj.getTime() - clockInTimeObj.getTime();
-              morningOTHours = morningDiffMs / (1000 * 60 * 60);
-              console.log(`🌅 Early morning OT: Clock in ${clockInTime} to 08:00 = ${morningOTHours.toFixed(2)} hours`);
-            }
-            
-            // Calculate evening OT (if clock out after 17:00 PM)
-            if (clockOutTimeObj > eveningOTStartTimeObj) {
-              const eveningDiffMs = clockOutTimeObj.getTime() - eveningOTStartTimeObj.getTime();
-              eveningOTHours = eveningDiffMs / (1000 * 60 * 60);
-              console.log(`🌆 Evening OT: 17:00 to clock out ${clockOutTime} = ${eveningOTHours.toFixed(2)} hours`);
-            }
-            
-            // Calculate total OT hours
-            totalOTHours = morningOTHours + eveningOTHours;
-            
-            if (totalOTHours > 0) {
-              // Set OT start and end times based on what OT periods exist
-              if (morningOTHours > 0 && eveningOTHours > 0) {
-                // Both morning and evening OT
-                otStartTime = clockInTime; // Start from actual clock in time
-                otEndTime = clockOutTime; // End at actual clock out time
-                console.log(`🕐 Combined OT: Morning ${morningOTHours.toFixed(2)}h + Evening ${eveningOTHours.toFixed(2)}h = ${totalOTHours.toFixed(2)}h total`);
-              } else if (morningOTHours > 0) {
-                // Only morning OT
-                otStartTime = clockInTime;
-                otEndTime = '08:00';
-                console.log(`🌅 Morning OT only: ${morningOTHours.toFixed(2)} hours`);
-              } else if (eveningOTHours > 0) {
-                // Only evening OT
-                otStartTime = '17:00';
-                otEndTime = clockOutTime;
-                console.log(`🌆 Evening OT only: ${eveningOTHours.toFixed(2)} hours`);
-              }
-              
-              otStart = otStartTime;
-              otEnd = otEndTime;
-              otHours = totalOTHours.toFixed(2); // Round to 2 decimal places
-              
-              console.log(`🧮 Total OT calculation: ${otHours} hours (Start: ${otStart}, End: ${otEnd})`);
-            } else {
-              console.log(`❌ No OT hours: Clock in ${clockInTime} and clock out ${clockOutTime} are within standard hours`);
-            }
+            console.log(`❌ No OT hours: Clock in ${clockInTime} and clock out ${clockOutTime} are within standard hours`);
           }
-        } else {
-          console.log(`❌ No clock out time provided`);
         }
+      }
 
-        // Update OT fields if there are OT hours
-        if (otHours && parseFloat(otHours) > 0) {
-          console.log(`💾 Saving OT data: Start=${otStart}, End=${otEnd}, Hours=${otHours}`);
-          console.log(`📍 Row number: ${existingCheck.row}`);
-          
-          // Define column positions based on sheet structure
-          const otStartCol = hasNewStructure ? 'F' : 'E';
-          const otEndCol = hasNewStructure ? 'G' : 'F';
-          const otHoursCol = hasNewStructure ? 'J' : 'I';
-          
-          const updates = [
-            {
-              range: formatSheetRange(targetSheetName, `${otStartCol}${existingCheck.row}`), // otStart
-              values: [[otStart]]
-            },
-            {
-              range: formatSheetRange(targetSheetName, `${otEndCol}${existingCheck.row}`), // otEnd
-              values: [[otEnd]]
-            },
-            {
-              range: formatSheetRange(targetSheetName, `${otHoursCol}${existingCheck.row}`), // Calculated OT Hours
-              values: [[otHours]]
-            }
-          ];
+      // Add comments update if provided
+      if (comments) {
+        const commentsCol = hasNewStructure ? 'H' : 'G';
+        updates.push({
+          range: formatSheetRange(targetSheetName, `${commentsCol}${rowIndex}`),
+          values: [[comments]]
+        });
+      }
 
-          console.log(`📝 Batch update data:`, JSON.stringify(updates, null, 2));
+      // Update Submitted At timestamp only for clock-in events (not clock-out)
+      if (type === 'clockIn') {
+        const submittedAtCol = hasNewStructure ? 'I' : 'H';
+        updates.push({
+          range: formatSheetRange(targetSheetName, `${submittedAtCol}${rowIndex}`),
+          values: [[submittedAt]]
+        });
+      }
 
-          try {
-            const batchUpdateResult = await sheets.spreadsheets.values.batchUpdate({
-              spreadsheetId,
-              requestBody: {
-                valueInputOption: 'RAW',
-                data: updates
-              }
-            });
-            
-            console.log(`✅ Batch update result:`, JSON.stringify(batchUpdateResult.data, null, 2));
-            console.log(`✅ OT hours calculated and saved: ${otHours} hours for ${driverName} on ${thaiDate}`);
-          } catch (error) {
-            console.error(`❌ Error in batch update:`, error);
-            throw error;
-          }
-        } else {
-          console.log(`⚠️ No OT hours to save: otHours=${otHours}`);
-        }
-
-        // Update comments if provided
-        if (comments) {
-          const commentsCol = hasNewStructure ? 'H' : 'G';
-          await sheets.spreadsheets.values.update({
+      // Execute all updates in a single batch call
+      if (updates.length > 0) {
+        console.log(`📝 Batch updating ${updates.length} cells`);
+        try {
+          await sheets.spreadsheets.values.batchUpdate({
             spreadsheetId,
-            range: formatSheetRange(targetSheetName, `${commentsCol}${existingCheck.row}`), // comments column
-            valueInputOption: 'RAW',
             requestBody: {
-              values: [[comments]]
+              valueInputOption: 'RAW',
+              data: updates
             }
           });
-        }
-
-        // Update Submitted At timestamp only for clock-in events (not clock-out)
-        if (type === 'clockIn') {
-          const submittedAtCol = hasNewStructure ? 'I' : 'H';
-          await sheets.spreadsheets.values.update({
-            spreadsheetId,
-            range: formatSheetRange(targetSheetName, `${submittedAtCol}${existingCheck.row}`), // submitted at column
-            valueInputOption: 'RAW',
-            requestBody: {
-              values: [[submittedAt]]
-            }
-          });
+          console.log(`✅ Batch update completed successfully`);
+        } catch (error) {
+          console.error(`❌ Error in batch update:`, error);
+          throw error;
         }
       }
 
       return {
         success: true,
         message: 'Clock event updated in existing row',
-        row: existingCheck.row,
-        updatedColumn: column,
+        row: rowIndex,
+        updatedColumn: timeColumn,
         timestamp,
         otHours: type === 'clockOut' ? otHours : undefined
       };
@@ -1149,16 +1067,18 @@ export async function getRowBySubmittedAt(submittedAt, env = 'prod', thaiDate = 
   }
 }
 
-// Get row by driver name and date
-export async function getRowByDriverAndDate(driverName, thaiDate, env = 'prod', language = 'en') {
+// Optimized: Check if entry exists AND get row data in one call
+// This replaces the two-call pattern (checkExisting + getRowByDriverAndDate)
+export async function checkAndGetRowByDriverAndDate(driverName, thaiDate, env = 'prod', language = 'en') {
   try {
     const spreadsheetId = getSpreadsheetId(env);
     const targetSheetName = getSheetNameFromDate(thaiDate);
     
-    // Detect sheet structure first
+    // Detect sheet structure (1 API call)
     const hasNewStructure = await detectSheetStructure(spreadsheetId, targetSheetName);
     const range = formatSheetRange(targetSheetName, hasNewStructure ? 'A:K' : 'A:J');
     
+    // Get all data in one call (1 API call)
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
@@ -1169,11 +1089,10 @@ export async function getRowByDriverAndDate(driverName, thaiDate, env = 'prod', 
     // Find row by driver name and date
     for (let i = 1; i < values.length; i++) { // skip header
       if (values[i][0] === driverName && values[i][1] === thaiDate) { // column A: driverName, column B: thaiDate
-        // Ensure we have a consistent structure regardless of sheet type
+        // Found it! Return both existence check and row data
         const rawRow = values[i];
         
         if (hasNewStructure) {
-          // For new structure, ensure we have all 11 columns
           const row = [
             rawRow[0] || '', // Driver Name
             rawRow[1] || '', // Date
@@ -1188,23 +1107,15 @@ export async function getRowByDriverAndDate(driverName, thaiDate, env = 'prod', 
             rawRow[10] || '' // Approval
           ];
           
-          console.log(`Google Sheets response:`, {
-            success: true,
-            row,
-            rowIndex: i + 1,
-            targetSheetName,
-            hasNewStructure
-          });
-          
           return {
             success: true,
+            exists: true,
             row,
             rowIndex: i + 1,
             targetSheetName,
             hasNewStructure
           };
         } else {
-          // For old structure, add empty day of week to maintain consistent data structure
           const row = [
             rawRow[0] || '', // Driver Name
             rawRow[1] || '', // Date
@@ -1219,16 +1130,9 @@ export async function getRowByDriverAndDate(driverName, thaiDate, env = 'prod', 
             rawRow[9] || ''  // Approval (was J, now K)
           ];
           
-          console.log(`Google Sheets response:`, {
-            success: true,
-            row,
-            rowIndex: i + 1,
-            targetSheetName,
-            hasNewStructure
-          });
-          
           return {
             success: true,
+            exists: true,
             row,
             rowIndex: i + 1,
             targetSheetName,
@@ -1238,14 +1142,52 @@ export async function getRowByDriverAndDate(driverName, thaiDate, env = 'prod', 
       }
     }
     
+    // Not found
     return {
-      success: false,
+      success: true,
+      exists: false,
+      row: null,
       error: 'Row not found'
     };
   } catch (error) {
-    console.error('Error getting row by driver and date:', error);
-    throw error;
+    console.error('Error checking and getting row by driver and date:', error);
+    return {
+      success: false,
+      exists: false,
+      error: error.message
+    };
   }
+}
+
+// Get row by driver name and date (kept for backwards compatibility)
+export async function getRowByDriverAndDate(driverName, thaiDate, env = 'prod', language = 'en') {
+  const result = await checkAndGetRowByDriverAndDate(driverName, thaiDate, env, language);
+  
+  if (result.exists && result.row) {
+    return {
+      success: true,
+      row: result.row,
+      rowIndex: result.rowIndex,
+      targetSheetName: result.targetSheetName,
+      hasNewStructure: result.hasNewStructure
+    };
+  }
+  
+  return {
+    success: false,
+    error: result.error || 'Row not found'
+  };
+}
+
+// Legacy function - now optimized to use checkAndGetRowByDriverAndDate
+export async function checkExistingEntry(driverName, thaiDate, env = 'prod') {
+  const result = await checkAndGetRowByDriverAndDate(driverName, thaiDate, env, 'en');
+  
+  return {
+    success: result.success,
+    exists: result.exists || false,
+    row: result.exists ? result.rowIndex : undefined
+  };
 }
 
 // Update a specific field in Google Sheets
@@ -1727,7 +1669,12 @@ export async function handleGoogleSheetsRequest(data) {
     
     switch (action) {
       case 'checkExisting':
-        return await checkExistingEntry(data.driverName, data.thaiDate, env);
+        // Optimized: Use combined function that checks AND gets data
+        return await checkAndGetRowByDriverAndDate(data.driverName, data.thaiDate, env, data.language || 'en');
+        
+      case 'checkAndGetRow':
+        // New optimized endpoint that does both operations
+        return await checkAndGetRowByDriverAndDate(data.driverName, data.thaiDate, env, data.language || 'en');
         
       case 'submitWithClockTimes':
         return await submitWithClockTimes(data);
@@ -2283,4 +2230,311 @@ export async function readRowDataForOT(targetSheetName, rowNumber, env = 'dev') 
       details: error.toString()
     };
   }
+}
+
+// Read login history data from Google Sheets
+// Assumes a sheet named "Login History" or "Logins" with columns:
+// Username, Login Date/Time, Status, IP Address, User Agent, etc.
+export async function readLoginHistoryFromSheet(env = 'prod', sheetName = 'Login History') {
+  try {
+    const spreadsheetId = getSpreadsheetId(env);
+    console.log(`📖 Reading login history from sheet "${sheetName}" in ${env} environment`);
+    
+    // Try to get all data from the login sheet
+    const range = formatSheetRange(sheetName, 'A:Z'); // Read all columns
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range,
+    });
+    
+    const values = response.data.values || [];
+    
+    if (!values || values.length === 0) {
+      return {
+        success: false,
+        error: `No data found in sheet "${sheetName}"`
+      };
+    }
+    
+    // First row is header - try to detect column positions
+    const headers = values[0].map(h => h?.toLowerCase() || '');
+    const usernameIndex = headers.findIndex(h => h.includes('username') || h.includes('user') || h.includes('identifier'));
+    const dateIndex = headers.findIndex(h => h.includes('date') || h.includes('time') || h.includes('login') || h.includes('attempt'));
+    const statusIndex = headers.findIndex(h => h.includes('status') || h.includes('success') || h.includes('failed'));
+    const ipIndex = headers.findIndex(h => h.includes('ip') || h.includes('address'));
+    const userAgentIndex = headers.findIndex(h => (h.includes('user') && h.includes('agent')) || h.includes('browser') || h.includes('device'));
+    const rememberMeIndex = headers.findIndex(h => h.includes('remember') || h.includes('rememberme'));
+    const failureReasonIndex = headers.findIndex(h => h.includes('reason') || h.includes('error') || h.includes('failure'));
+    
+    console.log(`📊 Detected columns:`, {
+      username: usernameIndex >= 0 ? headers[usernameIndex] : 'not found',
+      date: dateIndex >= 0 ? headers[dateIndex] : 'not found',
+      status: statusIndex >= 0 ? headers[statusIndex] : 'not found',
+      ip: ipIndex >= 0 ? headers[ipIndex] : 'not found',
+      userAgent: userAgentIndex >= 0 ? headers[userAgentIndex] : 'not found'
+    });
+    
+    if (usernameIndex < 0 || dateIndex < 0) {
+      return {
+        success: false,
+        error: `Required columns not found. Need: Username/User, Login Date/Time`
+      };
+    }
+    
+    // Parse rows into login records
+    const loginRecords = [];
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      if (!row || row.length === 0) continue;
+      
+      const username = row[usernameIndex]?.trim() || '';
+      const dateTime = row[dateIndex]?.trim() || '';
+      const status = statusIndex >= 0 ? (row[statusIndex]?.trim() || 'success') : 'success';
+      const ipAddress = ipIndex >= 0 ? (row[ipIndex]?.trim() || '') : '';
+      const userAgent = userAgentIndex >= 0 ? (row[userAgentIndex]?.trim() || '') : '';
+      const rememberMe = rememberMeIndex >= 0 ? (row[rememberMeIndex]?.toLowerCase() === 'true' || row[rememberMeIndex]?.toLowerCase() === 'yes') : false;
+      const failureReason = failureReasonIndex >= 0 ? (row[failureReasonIndex]?.trim() || '') : '';
+      
+      if (!username || !dateTime) continue; // Skip rows without required data
+      
+      // Parse date/time - try various formats
+      let loginDate;
+      try {
+        // Try ISO format first
+        loginDate = new Date(dateTime);
+        if (isNaN(loginDate.getTime())) {
+          // Try other formats
+          loginDate = new Date(dateTime.replace(/\//g, '-'));
+        }
+        if (isNaN(loginDate.getTime())) {
+          console.warn(`⚠️ Could not parse date: ${dateTime}`);
+          continue;
+        }
+      } catch (e) {
+        console.warn(`⚠️ Error parsing date: ${dateTime}`, e);
+        continue;
+      }
+      
+      loginRecords.push({
+        username,
+        loginAttemptAt: loginDate.toISOString(),
+        loginStatus: status.toLowerCase().includes('fail') ? 'failed' : (status.toLowerCase().includes('block') ? 'blocked' : 'success'),
+        ipAddress,
+        userAgent,
+        rememberMe,
+        failureReason: status.toLowerCase().includes('fail') ? (failureReason || 'Invalid credentials') : '',
+        deviceInfo: userAgent ? {
+          browser: userAgent,
+          platform: 'unknown'
+        } : null
+      });
+    }
+    
+    console.log(`✅ Parsed ${loginRecords.length} login records from sheet`);
+    
+    return {
+      success: true,
+      records: loginRecords,
+      total: loginRecords.length
+    };
+  } catch (error) {
+    console.error('Error reading login history from Google Sheets:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Get last clock-ins for multiple drivers efficiently (batch operation)
+// This is much more efficient than calling getLastClockInForDriver for each driver
+export async function getLastClockInsForDrivers(driverNames, env = 'prod', maxSheetsToCheck = 3) {
+  try {
+    const spreadsheetId = getSpreadsheetId(env);
+    console.log(`📖 Getting last clock-ins for ${driverNames.length} drivers from Google Sheets`);
+    console.log(`📖 Driver names to search:`, driverNames);
+    
+    // Get all sheet names once (1 API call)
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId,
+    });
+    
+    const allSheetNames = spreadsheet.data.sheets
+      .map(sheet => sheet.properties.title)
+      .sort()
+      .reverse(); // Most recent first
+    
+    console.log(`📊 All available sheets:`, allSheetNames);
+    
+    // Only check the most recent sheet for faster performance
+    const sheetNames = allSheetNames.slice(0, 1); // Only check the latest sheet
+    if (sheetNames.length === 0) {
+      console.error(`❌ No sheets found in spreadsheet`);
+      return {};
+    }
+    console.log(`📊 Checking latest sheet:`, sheetNames[0]);
+    
+    const results = {};
+    driverNames.forEach(name => {
+      results[name] = { success: false, date: null, time: null, dateTimestamp: null };
+    });
+    
+    // Helper function to parse Thai date and get timestamp for comparison
+    const parseThaiDate = (thaiDateStr) => {
+      try {
+        const parts = thaiDateStr.split('/');
+        if (parts.length !== 3) return null;
+        const day = parseInt(parts[0]);
+        const month = parseInt(parts[1]);
+        const thaiYear = parseInt(parts[2]);
+        const gregorianYear = thaiYear >= 2400 ? thaiYear - 543 : thaiYear;
+        const date = new Date(gregorianYear, month - 1, day);
+        return date.getTime();
+      } catch {
+        return null;
+      }
+    };
+    
+    // Search through sheets from most recent to oldest
+    for (const sheetName of sheetNames) {
+      try {
+        // Detect sheet structure (1 API call per sheet)
+        const hasNewStructure = await detectSheetStructure(spreadsheetId, sheetName);
+        const range = formatSheetRange(sheetName, hasNewStructure ? 'A:K' : 'A:J');
+        
+        // Get all values for this sheet (1 API call per sheet)
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range,
+        });
+        
+        const values = response.data.values || [];
+        console.log(`📊 Sheet "${sheetName}" has ${values.length} total rows (including header)`);
+        if (values.length <= 1) {
+          console.log(`⚠️ Sheet "${sheetName}" is empty or has no data rows, skipping`);
+          continue; // Skip empty sheets
+        }
+        
+        // Search through ALL rows to find the most recent date for each driver
+        console.log(`📊 Searching sheet "${sheetName}" for ${driverNames.length} drivers:`, driverNames);
+        console.log(`📊 Sheet has ${values.length - 1} data rows (excluding header)`);
+        
+        // Log all driver names found in the sheet for debugging
+        const sheetDriverNames = [];
+        for (let i = 1; i < Math.min(values.length, 10); i++) { // Check first 10 rows for debugging
+          if (values[i] && values[i][0]) {
+            sheetDriverNames.push(values[i][0]?.trim() || '');
+          }
+        }
+        console.log(`📊 Sample driver names in sheet (first 10 rows):`, sheetDriverNames);
+        
+        for (let i = 1; i < values.length; i++) {
+          const row = values[i];
+          if (!row || row.length === 0) continue;
+          
+          const rowDriverName = row[0]?.trim() || '';
+          
+          // Case-insensitive matching for driver names
+          const matchingDriverName = driverNames.find(dn => 
+            dn.toLowerCase() === rowDriverName.toLowerCase()
+          );
+          
+          if (!matchingDriverName) {
+            // Log when we're looking for a specific driver but it doesn't match
+            if (driverNames.length === 1 && driverNames[0].toLowerCase() === 'charena') {
+              console.log(`🔍 Row ${i}: Looking for "Charena" but found "${rowDriverName}" (similarity check)`);
+            }
+            continue;
+          }
+          
+          const thaiDate = row[1]?.trim() || '';
+          const clockIn = hasNewStructure ? (row[3]?.trim() || '') : (row[2]?.trim() || ''); // Column D (new) or C (old)
+          
+          // Debug logging - show full row data for matching driver
+          if (matchingDriverName) {
+            console.log(`🔍 Found matching driver "${matchingDriverName}" in row ${i}:`);
+            console.log(`   Full row data:`, row);
+            console.log(`   hasNewStructure: ${hasNewStructure}`);
+            console.log(`   Column indexes: driver=0, date=1, clockIn=${hasNewStructure ? '3' : '2'}`);
+            console.log(`   Extracted - date="${thaiDate}", clockIn="${clockIn}"`);
+            console.log(`   Row length: ${row.length}`);
+          }
+          
+          // Only process if we have both clock-in time and date
+          if (clockIn && thaiDate) {
+            const dateTimestamp = parseThaiDate(thaiDate);
+            
+            if (!dateTimestamp) {
+              console.warn(`⚠️ Could not parse date for ${matchingDriverName}: ${thaiDate}`);
+              continue;
+            }
+            
+            // Only update if this is a more recent date than what we already have
+            // OR if we haven't found any data for this driver yet
+            // Use matchingDriverName (from driverNames array) as key to preserve original casing
+            if (!results[matchingDriverName].dateTimestamp || dateTimestamp > results[matchingDriverName].dateTimestamp) {
+              console.log(`✅ Found clock-in for ${matchingDriverName}: ${thaiDate} ${clockIn} (timestamp: ${dateTimestamp})`);
+              results[matchingDriverName] = {
+                success: true,
+                date: thaiDate,
+                time: clockIn,
+                dateTimestamp: dateTimestamp
+              };
+            } else {
+              console.log(`⏭️ Skipping older clock-in for ${matchingDriverName}: ${thaiDate} (already have: ${new Date(results[matchingDriverName].dateTimestamp).toISOString()})`);
+            }
+          } else if (matchingDriverName) {
+            console.log(`⚠️ Missing data for ${matchingDriverName}: clockIn=${clockIn}, thaiDate=${thaiDate}`);
+          }
+        }
+      } catch (err) {
+        console.warn(`⚠️ Error reading sheet "${sheetName}":`, err.message);
+        continue;
+      }
+    }
+    
+    // Clean up results - remove dateTimestamp before returning
+    const cleanedResults = {};
+    driverNames.forEach(name => {
+      if (results[name] && results[name].success) {
+        cleanedResults[name] = {
+          success: true,
+          date: results[name].date,
+          time: results[name].time
+        };
+      } else {
+        cleanedResults[name] = {
+          success: false,
+          date: null,
+          time: null
+        };
+      }
+    });
+    
+    console.log(`✅ Found clock-ins for ${Object.values(cleanedResults).filter(r => r.success).length}/${driverNames.length} drivers`);
+    return cleanedResults;
+  } catch (error) {
+    console.error('Error getting last clock-ins from Google Sheets:', error);
+    return {};
+  }
+}
+
+// Get the most recent clock-in for a single driver (less efficient, but kept for backwards compatibility)
+export async function getLastClockInForDriver(driverName, env = 'prod') {
+  const results = await getLastClockInsForDrivers([driverName], env, 3);
+  const result = results[driverName];
+  
+  if (result && result.success) {
+    return {
+      success: true,
+      date: result.date,
+      time: result.time
+    };
+  }
+  
+  return {
+    success: false,
+    error: 'No clock-in found for this driver'
+  };
 }

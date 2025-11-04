@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
-import { handleGoogleSheetsRequest, createMonthlySheet } from './src/googleSheetsHandler.js';
+import { handleGoogleSheetsRequest, createMonthlySheet, readLoginHistoryFromSheet, getLastClockInForDriver, getLastClockInsForDrivers } from './src/googleSheetsHandler.js';
 import { setupAuthRoutes } from './src/login/authRoutes.js';
 
 // Load environment variables
@@ -87,9 +87,32 @@ app.use(cookieParser());
 // Configure multer for file uploads (memory storage)
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Strapi URL configuration (needed for driver endpoints)
+const STRAPI_URL = process.env.STRAPI_URL || 'http://localhost:1337';
+
+// Helper function to determine environment
+// Priority: NODE_ENV > STRAPI_URL > default to 'dev' for localhost
+function getEnvironment() {
+  // Check NODE_ENV first (most reliable)
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev') {
+    return 'dev';
+  }
+  if (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'prod') {
+    return 'prod';
+  }
+  
+  // Check STRAPI_URL to infer environment
+  if (STRAPI_URL.includes('localhost') || STRAPI_URL.includes('127.0.0.1')) {
+    return 'dev';
+  }
+  
+  // Default to prod for safety (production environments)
+  return 'prod';
+}
+
 // Setup authentication routes (login, logout, /me)
 setupAuthRoutes(app, {
-  strapiUrl: process.env.STRAPI_URL || 'http://localhost:1337'
+  strapiUrl: STRAPI_URL
 });
 
 // LINE Messaging API configuration
@@ -170,7 +193,14 @@ app.post('/sheets', async (req, res) => {
   console.log('Request body:', JSON.stringify(req.body, null, 2));
   
   try {
-    const result = await handleGoogleSheetsRequest(req.body);
+    // Ensure environment is set correctly
+    // Priority: request body > NODE_ENV > STRAPI_URL detection
+    const env = req.body.env || getEnvironment();
+    const requestBody = { ...req.body, env };
+    
+    console.log(`[Sheets] Using environment: ${env} (from ${req.body.env ? 'request' : 'detection'})`);
+    
+    const result = await handleGoogleSheetsRequest(requestBody);
     console.log('Google Sheets response:', JSON.stringify(result, null, 2));
     res.json(result);
   } catch (error) {
@@ -188,8 +218,79 @@ app.post('/submit', async (req, res) => {
   console.log('Request body:', JSON.stringify(req.body, null, 2));
   
   try {
-    const result = await handleGoogleSheetsRequest(req.body);
-    console.log('Submit response:', JSON.stringify(result, null, 2));
+    // Ensure environment is set correctly
+    const env = req.body.env || getEnvironment();
+    const requestBody = { ...req.body, env };
+    
+    // First, save to Google Sheets
+    const result = await handleGoogleSheetsRequest(requestBody);
+    console.log('Submit response (Google Sheets):', JSON.stringify(result, null, 2));
+    
+    // If Google Sheets save was successful, also save to Strapi
+    if (result.success && req.body.driverName && req.body.thaiDate) {
+      try {
+        const fetch = (await import('node-fetch')).default;
+        
+        // Find driver by name to get driver ID
+        const driverResponse = await fetch(
+          `${STRAPI_URL}/api/drivers?filters[name][$eq]=${encodeURIComponent(req.body.driverName)}&populate=*`,
+          {
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        const driverData = await driverResponse.json();
+        let driverId = null;
+        
+        if (driverData.data && driverData.data.length > 0) {
+          driverId = driverData.data[0].id;
+        }
+        
+        // Prepare attendance data for Strapi
+        const attendanceData = {
+          thaiDate: req.body.thaiDate,
+          clockIn: req.body.clockIn || null,
+          clockOut: req.body.clockOut || null,
+          comments: req.body.comments || null,
+          submittedAt: req.body.submittedAt || new Date().toISOString(),
+          driverName: req.body.driverName, // Keep for backward compatibility
+          approved: false
+        };
+        
+        // Add driver relationship if driver found
+        if (driverId) {
+          attendanceData.driver = driverId;
+        }
+        
+        console.log('Saving attendance to Strapi:', JSON.stringify(attendanceData, null, 2));
+        
+        // Save to Strapi
+        const strapiResponse = await fetch(`${STRAPI_URL}/api/attendances`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            data: attendanceData
+          })
+        });
+        
+        const strapiResult = await strapiResponse.json();
+        
+        if (strapiResponse.ok) {
+          console.log('Attendance saved to Strapi successfully:', JSON.stringify(strapiResult, null, 2));
+        } else {
+          console.error('Failed to save attendance to Strapi:', strapiResponse.status, strapiResult);
+          // Don't fail the whole request if Strapi save fails, just log it
+        }
+      } catch (strapiError) {
+        console.error('Error saving attendance to Strapi:', strapiError);
+        // Don't fail the whole request if Strapi save fails, just log it
+      }
+    }
+    
     res.json(result);
   } catch (error) {
     console.error('Submit proxy error:', error);
@@ -205,9 +306,139 @@ app.post('/clock-event', async (req, res) => {
   console.log('Request body:', JSON.stringify(req.body, null, 2));
   
   try {
-    const result = await handleGoogleSheetsRequest(req.body);
-    console.log('Clock event response:', JSON.stringify(result, null, 2));
+    // Ensure environment is set correctly
+    const env = req.body.env || getEnvironment();
+    const requestBody = { ...req.body, env };
+    
+    // First, save to Google Sheets
+    const result = await handleGoogleSheetsRequest(requestBody);
+    console.log('Clock event response (Google Sheets):', JSON.stringify(result, null, 2));
+    
+    // Return response immediately - don't wait for Strapi operations
     res.json(result);
+    
+    // Update Strapi asynchronously (non-blocking) after sending response
+    if (result.success && req.body.driverName && req.body.thaiDate) {
+      try {
+        const fetch = (await import('node-fetch')).default;
+        
+        // Find driver by name to get driver ID
+        const driverResponse = await fetch(
+          `${STRAPI_URL}/api/drivers?filters[name][$eq]=${encodeURIComponent(req.body.driverName)}&populate=*`,
+          {
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        const driverData = await driverResponse.json();
+        let driverId = null;
+        
+        if (driverData.data && driverData.data.length > 0) {
+          driverId = driverData.data[0].id;
+        }
+        
+        // Check if attendance record already exists for this driver and date
+        const existingAttendanceResponse = await fetch(
+          driverId 
+            ? `${STRAPI_URL}/api/attendances?filters[driver][id][$eq]=${driverId}&filters[thaiDate][$eq]=${req.body.thaiDate}&populate=*`
+            : `${STRAPI_URL}/api/attendances?filters[driverName][$eq]=${encodeURIComponent(req.body.driverName)}&filters[thaiDate][$eq]=${req.body.thaiDate}&populate=*`,
+          {
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        const existingData = await existingAttendanceResponse.json();
+        
+        if (existingData.data && existingData.data.length > 0) {
+          // Update existing attendance record
+          const attendanceId = existingData.data[0].id;
+          const updateData = {};
+          
+          if (req.body.type === 'clockIn') {
+            updateData.clockIn = req.body.timestamp;
+          } else if (req.body.type === 'clockOut') {
+            updateData.clockOut = req.body.timestamp;
+          }
+          
+          if (req.body.comments) {
+            updateData.comments = req.body.comments;
+          }
+          
+          if (driverId) {
+            updateData.driver = driverId;
+          }
+          
+          console.log('Updating attendance in Strapi:', attendanceId, updateData);
+          
+          const updateResponse = await fetch(`${STRAPI_URL}/api/attendances/${attendanceId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              data: updateData
+            })
+          });
+          
+          const updateResult = await updateResponse.json();
+          
+          if (updateResponse.ok) {
+            console.log('Attendance updated in Strapi successfully:', JSON.stringify(updateResult, null, 2));
+          } else {
+            console.error('Failed to update attendance in Strapi:', updateResponse.status, updateResult);
+          }
+        } else {
+          // Create new attendance record
+          const attendanceData = {
+            thaiDate: req.body.thaiDate,
+            driverName: req.body.driverName,
+            submittedAt: req.body.submittedAt || new Date().toISOString(),
+            approved: false
+          };
+          
+          if (req.body.type === 'clockIn') {
+            attendanceData.clockIn = req.body.timestamp;
+          } else if (req.body.type === 'clockOut') {
+            attendanceData.clockOut = req.body.timestamp;
+          }
+          
+          if (req.body.comments) {
+            attendanceData.comments = req.body.comments;
+          }
+          
+          if (driverId) {
+            attendanceData.driver = driverId;
+          }
+          
+          console.log('Creating attendance in Strapi:', JSON.stringify(attendanceData, null, 2));
+          
+          const createResponse = await fetch(`${STRAPI_URL}/api/attendances`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              data: attendanceData
+            })
+          });
+          
+          const createResult = await createResponse.json();
+          
+          if (createResponse.ok) {
+            console.log('Attendance created in Strapi successfully:', JSON.stringify(createResult, null, 2));
+          } else {
+            console.error('Failed to create attendance in Strapi:', createResponse.status, createResult);
+          }
+        }
+      } catch (strapiError) {
+        console.error('Error saving clock event to Strapi:', strapiError);
+        // Don't fail the whole request if Strapi save fails, just log it
+      }
+    }
   } catch (error) {
     console.error('Clock event proxy error:', error);
     res.status(500).json({
@@ -222,7 +453,10 @@ app.post('/check-existing', async (req, res) => {
   console.log('Request body:', JSON.stringify(req.body, null, 2));
   
   try {
-    const result = await handleGoogleSheetsRequest(req.body);
+    // Ensure environment is set correctly
+    const env = req.body.env || getEnvironment();
+    const requestBody = { ...req.body, env };
+    const result = await handleGoogleSheetsRequest(requestBody);
     console.log('Check existing response:', JSON.stringify(result, null, 2));
     res.json(result);
   } catch (error) {
@@ -869,8 +1103,7 @@ app.get('/health', (req, res) => {
 // STRAPI CONTENT API EXAMPLES
 // ==========================================
 // These examples show how to connect to Strapi tables
-
-const STRAPI_URL = process.env.STRAPI_URL || 'http://localhost:1337';
+// Note: STRAPI_URL is defined at the top of the file (line 91)
 
 // Example 1: Get all attendance records from Strapi
 app.get('/api/attendances', async (req, res) => {
@@ -1071,6 +1304,218 @@ app.get('/api/drivers', async (req, res) => {
   }
 });
 
+// Get all drivers with manager view data (name, age, account created, last clock in)
+app.get('/api/drivers/manager-view', async (req, res) => {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    console.log(`[Manager View] Fetching drivers from Strapi: ${STRAPI_URL}/api/drivers?populate=*`);
+    
+    // Fetch all drivers with populated relations
+    const driversResponse = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const driversData = await driversResponse.json();
+    
+    console.log(`[Manager View] Strapi response status: ${driversResponse.status}`);
+    console.log(`[Manager View] Drivers found: ${driversData.data?.length || 0}`);
+    
+    if (!driversResponse.ok) {
+      console.error(`[Manager View] Strapi error:`, driversData);
+      return res.status(driversResponse.status).json(driversData);
+    }
+    
+    // Process each driver to get additional info
+    const driversArray = driversData.data || [];
+    console.log(`[Manager View] Processing ${driversArray.length} drivers`);
+    
+    // First, try to get all last clock-ins from Strapi in batch
+    // Then batch fetch from Google Sheets for drivers without Strapi data
+    const driversNeedingGoogleSheets = [];
+    
+    // Process drivers and collect those that need Google Sheets lookup
+    const driversWithInfo = await Promise.all(
+      driversArray.map(async (driver) => {
+        console.log(`[Manager View] Processing driver: ${driver.id}, name: ${driver.attributes?.name || driver.name}`);
+        // Build photo URL - prepend Strapi URL if it's a relative path
+        let photoUrl = null;
+        if (driver.attributes?.photo?.data) {
+          const photoPath = driver.attributes.photo.data.attributes?.url || driver.attributes.photo.data.url;
+          if (photoPath) {
+            // If it's already a full URL, use it; otherwise prepend Strapi URL
+            photoUrl = photoPath.startsWith('http') 
+              ? photoPath 
+              : `${STRAPI_URL}${photoPath.startsWith('/') ? '' : '/'}${photoPath}`;
+          }
+        }
+        
+        const driverInfo = {
+          id: driver.id,
+          name: driver.attributes?.name || driver.name || '',
+          age: driver.attributes?.age || driver.age || null,
+          createdAt: driver.attributes?.createdAt || driver.createdAt || null,
+          photo: photoUrl ? {
+            id: driver.attributes.photo.data.id,
+            url: photoUrl
+          } : null,
+          user: null,
+          lastClockIn: null
+        };
+        
+        // Get user info if driver has a user relation
+        if (driver.attributes?.user?.data || driver.user) {
+          const userId = driver.attributes?.user?.data?.id || driver.user?.id || driver.user;
+          if (userId) {
+            try {
+              const userResponse = await fetch(`${STRAPI_URL}/api/users/${userId}?populate=*`, {
+                headers: {
+                  'Content-Type': 'application/json'
+                }
+              });
+              const userData = await userResponse.json();
+              if (userResponse.ok && userData) {
+                driverInfo.user = {
+                  id: userData.id,
+                  username: userData.username || '',
+                  email: userData.email || '',
+                  createdAt: userData.createdAt || null,
+                  confirmed: userData.confirmed || false
+                };
+              }
+            } catch (err) {
+              console.error(`Error fetching user ${userId}:`, err);
+            }
+          }
+        }
+        
+        // Get last attendance (clock in) for this driver
+        // Always check Google Sheets since it's the source of truth, but also check Strapi for comparison
+        const driverName = driver.attributes?.name || driver.name || '';
+        
+        if (driverName) {
+          // Always mark for Google Sheets lookup (it's the source of truth)
+          driversNeedingGoogleSheets.push({ driverName, driverInfo });
+          
+          // Also try Strapi for comparison (optional - we'll use Google Sheets result anyway)
+          try {
+            const driverId = driver.id;
+            const attendanceResponse = await fetch(
+              `${STRAPI_URL}/api/attendances?filters[driver][id][$eq]=${driverId}&sort=clockIn:desc&pagination[limit]=1&populate=*`,
+              {
+                headers: {
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
+            const attendanceData = await attendanceResponse.json();
+            
+            if (attendanceResponse.ok && attendanceData.data && attendanceData.data.length > 0) {
+              const lastAttendance = attendanceData.data[0];
+              console.log(`[Manager View] Found Strapi attendance for ${driverName} (for comparison):`, {
+                date: lastAttendance.attributes?.thaiDate || lastAttendance.thaiDate,
+                time: lastAttendance.attributes?.clockIn || lastAttendance.clockIn
+              });
+              // Store Strapi data temporarily, but Google Sheets will override if it's more recent
+              driverInfo.strapiLastClockIn = {
+                date: lastAttendance.attributes?.thaiDate || lastAttendance.thaiDate || null,
+                time: lastAttendance.attributes?.clockIn || lastAttendance.clockIn || null,
+                submittedAt: lastAttendance.attributes?.submittedAt || lastAttendance.submittedAt || null
+              };
+            }
+          } catch (err) {
+            console.error(`Error fetching Strapi attendance for driver ${driver.id}:`, err);
+            // Continue - we'll use Google Sheets data
+          }
+        }
+        
+        return driverInfo;
+      })
+    );
+    
+    // Batch fetch last clock-ins from Google Sheets for drivers without Strapi data
+    if (driversNeedingGoogleSheets.length > 0) {
+      console.log(`[Manager View] Batch fetching ${driversNeedingGoogleSheets.length} drivers from Google Sheets`);
+      console.log(`[Manager View] Driver names:`, driversNeedingGoogleSheets.map(d => d.driverName));
+      
+      // Determine environment based on NODE_ENV or request origin
+      // Priority: NODE_ENV > request origin detection
+      let env = 'prod'; // Default to prod for safety
+      
+      // Check NODE_ENV first (most reliable)
+      if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev') {
+        env = 'dev';
+      } else if (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'prod') {
+        env = 'prod';
+      } else {
+        // Fallback: detect from request origin
+        const origin = req.headers.origin || req.headers.referer || '';
+        const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+        env = isLocalhost ? 'dev' : 'prod';
+      }
+      
+      console.log(`[Manager View] NODE_ENV: ${process.env.NODE_ENV}`);
+      console.log(`[Manager View] Request origin: ${req.headers.origin || req.headers.referer || 'N/A'}`);
+      console.log(`[Manager View] Using environment: ${env}`);
+      
+      const driverNames = driversNeedingGoogleSheets.map(d => d.driverName);
+      // Check only the latest sheet for faster performance
+      const googleSheetsResults = await getLastClockInsForDrivers(driverNames, env, 1); // Check only latest sheet with correct env
+      
+      console.log(`[Manager View] Google Sheets results:`, JSON.stringify(googleSheetsResults, null, 2));
+      
+      // Update driver info with Google Sheets data
+      // Use case-insensitive lookup to handle casing differences
+      driversNeedingGoogleSheets.forEach(({ driverName, driverInfo }) => {
+        // Try exact match first
+        let result = googleSheetsResults[driverName];
+        
+        // If not found, try case-insensitive lookup
+        if (!result) {
+          const matchingKey = Object.keys(googleSheetsResults).find(key => 
+            key.toLowerCase() === driverName.toLowerCase()
+          );
+          if (matchingKey) {
+            result = googleSheetsResults[matchingKey];
+            console.log(`[Manager View] Found case-insensitive match: "${driverName}" -> "${matchingKey}"`);
+          }
+        }
+        
+        console.log(`[Manager View] Processing result for ${driverName}:`, result);
+        if (result && result.success) {
+          console.log(`[Manager View] Setting lastClockIn for ${driverName}: date=${result.date}, time=${result.time}`);
+          driverInfo.lastClockIn = {
+            date: result.date,
+            time: result.time,
+            submittedAt: null
+          };
+        } else {
+          console.log(`[Manager View] No clock-in found for ${driverName}`);
+          console.log(`[Manager View] Available keys in results:`, Object.keys(googleSheetsResults));
+        }
+      });
+    }
+    
+    // Set CORS headers
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    res.json({
+      data: driversWithInfo,
+      meta: {
+        total: driversWithInfo.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching drivers for manager view:', error);
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get a single driver by ID
 app.get('/api/drivers/:id', async (req, res) => {
   try {
@@ -1118,8 +1563,15 @@ app.get('/api/drivers/name/:name', async (req, res) => {
 app.post('/api/upload', upload.single('files'), async (req, res) => {
   try {
     if (!req.file) {
+      console.error('No file provided in upload request');
       return res.status(400).json({ error: 'No file provided' });
     }
+
+    console.log('Received file upload:', {
+      filename: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    });
 
     const fetch = (await import('node-fetch')).default;
     const FormData = (await import('form-data')).default;
@@ -1131,6 +1583,8 @@ app.post('/api/upload', upload.single('files'), async (req, res) => {
       contentType: req.file.mimetype
     });
     
+    console.log('Forwarding upload to Strapi:', `${STRAPI_URL}/api/upload`);
+    
     const response = await fetch(`${STRAPI_URL}/api/upload`, {
       method: 'POST',
       body: formData,
@@ -1138,9 +1592,23 @@ app.post('/api/upload', upload.single('files'), async (req, res) => {
     });
     
     const data = await response.json();
+    
+    console.log('Strapi upload response status:', response.status);
+    console.log('Strapi upload response:', JSON.stringify(data, null, 2));
+    
+    // Set CORS headers
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+    
     res.json(data);
   } catch (error) {
     console.error('Error uploading file:', error);
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
     res.status(500).json({ error: error.message });
   }
 });
@@ -1208,20 +1676,39 @@ app.put('/api/drivers/:id', async (req, res) => {
     const { id } = req.params;
     const fetch = (await import('node-fetch')).default;
     
+    // If data is already wrapped, use it; otherwise wrap it
+    const bodyData = req.body.data || req.body;
+    
+    console.log('Updating driver in Strapi:', id, JSON.stringify(bodyData, null, 2));
+    
     const response = await fetch(`${STRAPI_URL}/api/drivers/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        data: req.body
+        data: bodyData
       })
     });
     
     const data = await response.json();
+    
+    console.log('Strapi update response status:', response.status);
+    console.log('Strapi update response data:', JSON.stringify(data, null, 2));
+    
+    // Set CORS headers
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+    
     res.json(data);
   } catch (error) {
     console.error('Error updating driver:', error);
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
     res.status(500).json({ error: error.message });
   }
 });
@@ -1232,6 +1719,8 @@ app.delete('/api/drivers/:id', async (req, res) => {
     const { id } = req.params;
     const fetch = (await import('node-fetch')).default;
     
+    console.log('Deleting driver in Strapi:', id);
+    
     const response = await fetch(`${STRAPI_URL}/api/drivers/${id}`, {
       method: 'DELETE',
       headers: {
@@ -1240,10 +1729,195 @@ app.delete('/api/drivers/:id', async (req, res) => {
     });
     
     const data = await response.json();
+    
+    console.log('Strapi delete response status:', response.status);
+    console.log('Strapi delete response data:', JSON.stringify(data, null, 2));
+    
+    // Set CORS headers
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+    
     res.json(data);
   } catch (error) {
     console.error('Error deleting driver:', error);
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Sync login history from Google Sheets to Strapi
+app.post('/api/logins/sync-from-sheets', async (req, res) => {
+  try {
+    const { env = 'prod', sheetName = 'Login History', month, year } = req.body;
+    const fetch = (await import('node-fetch')).default;
+    
+    console.log(`[Sync Login History] Starting sync from Google Sheets`);
+    console.log(`[Sync Login History] Environment: ${env}, Sheet: ${sheetName}`);
+    
+    // Read login data from Google Sheets
+    const sheetData = await readLoginHistoryFromSheet(env, sheetName);
+    
+    if (!sheetData.success) {
+      return res.status(400).json({
+        success: false,
+        error: sheetData.error
+      });
+    }
+    
+    // Get or create month record
+    let monthRecord = null;
+    if (month && year) {
+      try {
+        // Try to find existing month
+        const monthResponse = await fetch(
+          `${STRAPI_URL}/api/months?filters[year][$eq]=${year}&filters[month][$eq]=${month}`,
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+        const monthData = await monthResponse.json();
+        
+        if (monthData.data && monthData.data.length > 0) {
+          monthRecord = monthData.data[0];
+        } else {
+          // Create new month record
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                             'July', 'August', 'September', 'October', 'November', 'December'];
+          const monthName = monthNames[month - 1];
+          const thaiYear = year + 543; // Convert to Thai Buddhist year
+          
+          const startDate = new Date(year, month - 1, 1);
+          const endDate = new Date(year, month, 0);
+          
+          const createMonthResponse = await fetch(`${STRAPI_URL}/api/months`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              data: {
+                year,
+                month,
+                monthName: `${monthName} ${year}`,
+                startDate: startDate.toISOString().split('T')[0],
+                endDate: endDate.toISOString().split('T')[0],
+                thaiYear,
+                isActive: true
+              }
+            })
+          });
+          
+          const createMonthData = await createMonthResponse.json();
+          if (createMonthResponse.ok && createMonthData.data) {
+            monthRecord = createMonthData.data;
+          }
+        }
+      } catch (err) {
+        console.error('[Sync Login History] Error handling month:', err);
+      }
+    }
+    
+    // Sync each login record to Strapi
+    const results = {
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      errors: []
+    };
+    
+    for (const record of sheetData.records) {
+      try {
+        // Find user by username
+        const userResponse = await fetch(
+          `${STRAPI_URL}/api/users?filters[username][$eq]=${encodeURIComponent(record.username)}`,
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+        const userData = await userResponse.json();
+        
+        let userId = null;
+        if (userData.data && userData.data.length > 0) {
+          userId = userData.data[0].id;
+        } else {
+          // User not found - skip this record
+          results.skipped++;
+          continue;
+        }
+        
+        // Check if login record already exists (by username and loginAttemptAt)
+        const existingLoginResponse = await fetch(
+          `${STRAPI_URL}/api/logins?filters[user][id][$eq]=${userId}&filters[loginAttemptAt][$eq]=${record.loginAttemptAt}`,
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+        const existingLoginData = await existingLoginResponse.json();
+        
+        if (existingLoginData.data && existingLoginData.data.length > 0) {
+          // Already exists - skip
+          results.skipped++;
+          continue;
+        }
+        
+        // Create login record in Strapi
+        const loginData = {
+          data: {
+            user: userId,
+            loginStatus: record.loginStatus,
+            loginAttemptAt: record.loginAttemptAt,
+            ipAddress: record.ipAddress || null,
+            userAgent: record.userAgent || null,
+            rememberMe: record.rememberMe || false,
+            failureReason: record.failureReason || null,
+            deviceInfo: record.deviceInfo || null
+          }
+        };
+        
+        if (monthRecord) {
+          loginData.data.month = monthRecord.id;
+        }
+        
+        const createLoginResponse = await fetch(`${STRAPI_URL}/api/logins`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(loginData)
+        });
+        
+        if (createLoginResponse.ok) {
+          results.success++;
+        } else {
+          const errorData = await createLoginResponse.json();
+          results.failed++;
+          results.errors.push({
+            username: record.username,
+            error: errorData.error?.message || 'Unknown error'
+          });
+        }
+      } catch (err) {
+        console.error(`[Sync Login History] Error syncing record for ${record.username}:`, err);
+        results.failed++;
+        results.errors.push({
+          username: record.username,
+          error: err.message
+        });
+      }
+    }
+    
+    console.log(`[Sync Login History] Sync complete:`, results);
+    
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.json({
+      success: true,
+      message: `Synced ${results.success} login records`,
+      results
+    });
+  } catch (error) {
+    console.error('[Sync Login History] Error:', error);
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 

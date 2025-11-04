@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "./components/ui/select";
 import LoadingAnimation from './components/LoadingAnimation';
 
@@ -183,6 +184,9 @@ const labels = {
 };
 
 function StyledForm() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   // Add CSS animation for modal
   useEffect(() => {
     const style = document.createElement('style');
@@ -1081,43 +1085,29 @@ function StyledForm() {
     }
   };
 
-  // Function to check and auto-fill existing data for a driver
+  // Function to check and auto-fill existing data for a driver (OPTIMIZED - single API call)
   const checkExistingDataForDriver = async (driverName) => {
     try {
       setIsLoadingData(true); // Start loading
       console.log(`🔄 Loading animation started for driver: ${driverName}`);
       
-      const response = await fetch(`${API_BASE_URL}/check-existing`, {
+      // Optimized: Single API call that checks existence AND gets row data
+      const response = await fetch(`${API_BASE_URL}/sheets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'checkExisting',
+          action: 'checkAndGetRow',
           driverName: driverName,
           thaiDate: getThaiDateString(),
-          env: getEffectiveEnv()
+          env: getEffectiveEnv(),
+          language: browserLang
         }),
       });
 
       const result = await response.json();
       
-      if (result.exists) {
-        // Get the existing row data
-        const rowResponse = await fetch(`${API_BASE_URL}/sheets`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'getRowByDriverAndDate',
-            driverName: driverName,
-            thaiDate: getThaiDateString(),
-            env: getEffectiveEnv(),
-            language: browserLang
-          }),
-        });
-
-        const rowResult = await rowResponse.json();
-        
-        if (rowResult.success && rowResult.row) {
-          const [driver, date, dayOfWeek, clockIn, clockOut, otStart, otEnd, comments, submittedAt, approval] = rowResult.row;
+      if (result.exists && result.row) {
+          const [driver, date, dayOfWeek, clockIn, clockOut, otStart, otEnd, comments, submittedAt, approval] = result.row;
            
            // Auto-fill the form with existing data
            const updatedFormData = {
@@ -1163,25 +1153,9 @@ function StyledForm() {
                comments: comments || 'None'
              });
            }
-         } else {
-           // No existing data found in Google Sheets - clear form to original state
-           console.log(`No existing data found for driver: ${driverName} in Google Sheets`);
-           setFormData({
-             driverName: driverName,
-             clockIn: '',
-             clockOut: '',
-             comments: ''
-           });
-           setOriginalData(null);
-           setChangedFields({});
-           setInvalidFields({});
-           
-           // Failsafe: Close dropdown when no data is found
-           closeAllDropdowns();
-         }
       } else {
+        // No existing data found - clear form to original state
         console.log(`No existing data found for driver: ${driverName}`);
-        // Also clear form to original state when no data exists
         setFormData({
           driverName: driverName,
           clockIn: '',
@@ -1276,6 +1250,8 @@ function StyledForm() {
         const formData = new FormData();
         formData.append('files', newDriver.photo);
 
+        console.log('Uploading photo to Strapi:', newDriver.photo.name, newDriver.photo.type);
+
         const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
           method: 'POST',
           body: formData
@@ -1283,12 +1259,28 @@ function StyledForm() {
 
         const uploadResult = await uploadResponse.json();
 
-        if (uploadResponse.ok && uploadResult && uploadResult.length > 0) {
-          // Strapi returns array of uploaded files, get the first one's ID
-          photoId = uploadResult[0].id || uploadResult[0]?.id;
-          console.log('Photo uploaded successfully, ID:', photoId);
+        console.log('Upload response status:', uploadResponse.status);
+        console.log('Upload response data:', uploadResult);
+
+        if (uploadResponse.ok && uploadResult) {
+          // Strapi returns array of uploaded files
+          // Handle both array and single object responses
+          const uploadedFile = Array.isArray(uploadResult) ? uploadResult[0] : uploadResult;
+          
+          if (uploadedFile) {
+            // Strapi v5 returns media with 'id' field
+            photoId = uploadedFile.id || uploadedFile.data?.id || uploadedFile.data?.attributes?.id;
+            console.log('Photo uploaded successfully, ID:', photoId);
+            
+            if (!photoId) {
+              console.warn('Photo uploaded but ID not found in response:', uploadedFile);
+            }
+          } else {
+            console.warn('Photo upload response was empty');
+          }
         } else {
-          console.warn('Photo upload failed, continuing without photo');
+          console.error('Photo upload failed:', uploadResponse.status, uploadResult);
+          console.warn('Continuing to create driver without photo');
         }
       }
 
@@ -1299,9 +1291,13 @@ function StyledForm() {
         status: 'active'
       };
 
-      // Add photo if uploaded successfully (Strapi expects media ID)
+      // Add photo if uploaded successfully (Strapi expects media ID for single media field)
       if (photoId) {
+        // For single media field in Strapi v5, pass the ID directly
         driverData.photo = photoId;
+        console.log('Linking photo to driver:', photoId);
+      } else {
+        console.log('No photo ID available, creating driver without photo');
       }
 
       const response = await fetch(`${API_BASE_URL}/api/drivers`, {
@@ -1322,7 +1318,19 @@ function StyledForm() {
           statusText: response.statusText,
           result: result
         });
-        const errorMessage = result.error?.message || result.error?.error?.message || result.error || JSON.stringify(result) || 'Failed to create driver';
+        
+        // Better error messages for common issues
+        let errorMessage = 'Failed to create driver';
+        if (response.status === 403) {
+          errorMessage = 'Permission denied. Please check Strapi permissions - ensure "Public" role has "create" permission for Driver.';
+        } else if (result.error) {
+          errorMessage = result.error.message || result.error.error?.message || result.error.error || JSON.stringify(result.error);
+        } else if (result.data?.error) {
+          errorMessage = result.data.error.message || JSON.stringify(result.data.error);
+        } else {
+          errorMessage = JSON.stringify(result) || `Server error: ${response.status} ${response.statusText}`;
+        }
+        
         throw new Error(errorMessage);
       }
 
@@ -2495,12 +2503,26 @@ function StyledForm() {
     // Check URL path first
     const path = window.location.pathname;
     
-    if (path === '/th') {
+    if (path === '/th' || path.startsWith('/th/')) {
       return 'th';
     }
     
-    if (path === '/en') {
+    if (path === '/en' || path.startsWith('/en/')) {
       return 'en';
+    }
+    
+    // For /prod path, check cookie first, then browser language
+    if (path === '/prod') {
+      const savedLang = getCookie('preferredLanguage');
+      if (savedLang === 'th' || savedLang === 'en') {
+        return savedLang;
+      }
+      // Fallback to browser language
+      if (navigator.language.startsWith('th')) {
+        return 'th';
+      } else {
+        return 'en';
+      }
     }
     
     // For root path (/), use browser language detection
@@ -2518,10 +2540,14 @@ function StyledForm() {
   
   const [browserLang, setBrowserLang] = useState(() => getLanguagePreference()); // Initialize with actual language preference
 
-  // Only run language detection once on mount
+  // Update language when path changes (for routes like /th, /en)
   useEffect(() => {
-    setBrowserLang(getLanguagePreference());
-  }, []);
+    const currentLang = getLanguagePreference();
+    if (currentLang !== browserLang) {
+      setBrowserLang(currentLang);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -2664,42 +2690,44 @@ function StyledForm() {
       }}
       onClick={closeAllDropdowns}
     >
-      {/* Environment Switcher Button - Top Right */}
-      <button
-        type="button"
-        onClick={() => {
-          const newEnv = getEffectiveUIEnv() === 'dev' ? 'prod' : 'dev';
-          setCookie('uiEnvironment', newEnv, 7);
-          window.location.reload();
-        }}
-        style={{
-          position: 'fixed',
-          top: '20px',
-          right: '20px',
-          zIndex: 1000,
-          padding: '8px 16px',
-          borderRadius: '20px',
-          border: 'none',
-          background: getEffectiveUIEnv() === 'dev' ? '#10b981' : '#ef4444',
-          color: '#ffffff',
-          fontSize: '12px',
-          fontWeight: '600',
-          cursor: 'pointer',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-          transition: 'all 0.2s ease',
-          fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
-        }}
-        onMouseOver={(e) => {
-          e.target.style.transform = 'scale(1.05)';
-          e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
-        }}
-        onMouseOut={(e) => {
-          e.target.style.transform = 'scale(1)';
-          e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-        }}
-      >
-        {getEffectiveUIEnv() === 'dev' ? '🔧 DEV' : '🚀 PROD'}
-      </button>
+      {/* Environment Switcher Button - Top Right (hidden on /prod when on production) */}
+      {!(location.pathname === '/prod' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') && (
+        <button
+          type="button"
+          onClick={() => {
+            const newEnv = getEffectiveUIEnv() === 'dev' ? 'prod' : 'dev';
+            setCookie('uiEnvironment', newEnv, 7);
+            window.location.reload();
+          }}
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            zIndex: 1000,
+            padding: '8px 16px',
+            borderRadius: '20px',
+            border: 'none',
+            background: getEffectiveUIEnv() === 'dev' ? '#10b981' : '#ef4444',
+            color: '#ffffff',
+            fontSize: '12px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            transition: 'all 0.2s ease',
+            fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
+          }}
+          onMouseOver={(e) => {
+            e.target.style.transform = 'scale(1.05)';
+            e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
+          }}
+          onMouseOut={(e) => {
+            e.target.style.transform = 'scale(1)';
+            e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+          }}
+        >
+          {getEffectiveUIEnv() === 'dev' ? '🔧 DEV' : '🚀 PROD'}
+        </button>
+      )}
       <form
         style={{
           width: "80vw",
@@ -2733,8 +2761,19 @@ function StyledForm() {
             type="button"
             onClick={() => {
               const newLang = browserLang === 'th' ? 'en' : 'th';
-              const newPath = newLang === 'th' ? '/th' : '/en';
-              window.location.href = newPath;
+              // Preserve current path (like /prod) and just update language state
+              const currentPath = window.location.pathname;
+              
+              // If on /prod, stay on /prod and just update language via state
+              if (currentPath === '/prod') {
+                setBrowserLang(newLang);
+                // Store language preference in cookie/localStorage for persistence
+                setCookie('preferredLanguage', newLang, 365);
+              } else {
+                // For other paths, navigate to language-specific path
+                const newPath = newLang === 'th' ? '/th' : '/en';
+                navigate(newPath, { replace: true });
+              }
             }}
             style={{
               padding: '8px 12px',
