@@ -57,8 +57,10 @@ const allowedOrigins = [
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   console.log(`[CORS] Request origin: ${origin || 'N/A'}`);
-  if (!origin || allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
+  if (!origin) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
