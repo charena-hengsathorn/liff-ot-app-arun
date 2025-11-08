@@ -68,6 +68,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Max-Age', '86400');
   }
   if (req.method === 'OPTIONS') {
+    console.log('[CORS] Preflight response headers:', res.getHeaders());
     return res.sendStatus(204);
   }
   next();
