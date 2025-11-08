@@ -58,7 +58,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, origin);
+      return callback(null, true);
     }
     return callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
@@ -72,8 +72,8 @@ app.use(cors({
 app.options('*', (req, res) => {
   const origin = req.headers.origin;
   
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
