@@ -44,15 +44,24 @@ function scheduleMonthlySheetCreation() {
 scheduleMonthlySheetCreation();
 
 // Middleware
+const allowedOrigins = [
+  'http://localhost:5173', // Vite dev server
+  'http://localhost:5174', // Vite dev server (alternative)
+  'http://localhost:5175', // Vite dev server (alternative)
+  'http://localhost:3000', // Alternative dev port
+  'https://liff-ot-app-positive.vercel.app', // Legacy Vercel frontend
+  'https://liff-ot-app-positive.herokuapp.com', // Legacy Heroku frontend
+  'https://liff-ot-app-arun.vercel.app', // New Vercel frontend
+  'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app' // Vercel deployment preview
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173', // Vite dev server
-    'http://localhost:5174', // Vite dev server (alternative)
-    'http://localhost:5175', // Vite dev server (alternative)
-    'http://localhost:3000', // Alternative dev port
-    'https://liff-ot-app-positive.vercel.app', // Vercel frontend
-    'https://liff-ot-app-positive.herokuapp.com' // Heroku production
-  ],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, origin);
+    }
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
@@ -62,14 +71,6 @@ app.use(cors({
 // Handle OPTIONS preflight requests globally
 app.options('*', (req, res) => {
   const origin = req.headers.origin;
-  const allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://localhost:3000',
-    'https://liff-ot-app-positive.vercel.app',
-    'https://liff-ot-app-positive.herokuapp.com'
-  ];
   
   if (allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
