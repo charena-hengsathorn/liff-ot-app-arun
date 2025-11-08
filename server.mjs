@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
@@ -54,22 +55,30 @@ const allowedOrigins = [
   'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app' // Vercel deployment preview
 ];
 
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  console.log(`[CORS] Request origin: ${origin || 'N/A'}`);
-  if (!origin) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  } else if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-    res.header('Access-Control-Expose-Headers', 'Content-Range, X-Content-Range');
-    res.header('Access-Control-Max-Age', '86400');
-  }
-  if (req.method === 'OPTIONS') {
-    console.log('[CORS] Preflight response headers:', res.getHeaders());
-    return res.sendStatus(204);
+  } else if (!origin) {
+    res.header('Access-Control-Allow-Origin', '*');
   }
   next();
 });
