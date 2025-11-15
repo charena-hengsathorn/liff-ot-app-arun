@@ -8,7 +8,7 @@ export const loginConfig = {
     const isDev = import.meta.env.DEV;
     return isDev
       ? import.meta.env.VITE_API_BASE_URL_DEV || 'http://localhost:3001'
-      : import.meta.env.VITE_API_BASE_URL_PROD || 'https://liff-ot-app-raksaard-2de47d0ac48c.herokuapp.com';
+      : import.meta.env.VITE_API_BASE_URL_PROD || 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
   },
 
   // Styling customization

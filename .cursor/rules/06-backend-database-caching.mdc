@@ -1,0 +1,1087 @@
+# Backend Development Standards - Database, Caching & Infrastructure
+
+**Application Type:** Apply Intelligently  
+**Applies To:** Database design, caching, background jobs, microservices  
+**File Pattern:** `backend/**/*.{py,ts,js,go}`, `migrations/**/*`, `workers/**/*`
+
+---
+
+## Database Design
+
+### Schema Design Principles
+
+```sql
+-- ✅ GOOD: Well-designed database schema
+
+-- Users table
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'user',
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    email_verified BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,  -- Soft delete
+    
+    -- Constraints
+    CONSTRAINT users_email_check CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}$'),
+    CONSTRAINT users_role_check CHECK (role IN ('guest', 'user', 'moderator', 'admin'))
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_users_email ON users(email) WHERE deleted_at IS NULL;
+CREATE INDEX idx_users_status ON users(status) WHERE deleted_at IS NULL;
+CREATE INDEX idx_users_created_at ON users(created_at DESC);
+
+-- Trigger for updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Orders table (with proper foreign keys)
+CREATE TABLE orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    total_amount DECIMAL(10, 2) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    payment_method VARCHAR(50),
+    shipping_address_id UUID REFERENCES addresses(id),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    paid_at TIMESTAMP WITH TIME ZONE,
+    shipped_at TIMESTAMP WITH TIME ZONE,
+    delivered_at TIMESTAMP WITH TIME ZONE,
+    
+    CONSTRAINT orders_status_check CHECK (status IN ('pending', 'paid', 'shipped', 'delivered', 'cancelled')),
+    CONSTRAINT orders_total_amount_check CHECK (total_amount >= 0)
+);
+
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
+
+-- Order items (many-to-many with additional data)
+CREATE TABLE order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    quantity INTEGER NOT NULL,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    subtotal DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    
+    CONSTRAINT order_items_quantity_check CHECK (quantity > 0),
+    CONSTRAINT order_items_unit_price_check CHECK (unit_price >= 0),
+    CONSTRAINT order_items_subtotal_check CHECK (subtotal >= 0)
+);
+
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+```
+
+### Database Best Practices
+
+```python
+# ✅ GOOD: Repository pattern with database access
+
+from sqlalchemy import select, update, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, List
+
+class UserRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def find_by_id(self, user_id: str) -> Optional[User]:
+        """Get user by ID"""
+        stmt = select(User).where(
+            User.id == user_id,
+            User.deleted_at.is_(None)  # Soft delete check
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    async def find_by_email(self, email: str) -> Optional[User]:
+        """Get user by email"""
+        stmt = select(User).where(
+            User.email == email.lower(),
+            User.deleted_at.is_(None)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    async def list(
+        self,
+        offset: int = 0,
+        limit: int = 20,
+        status: Optional[str] = None
+    ) -> List[User]:
+        """List users with pagination"""
+        stmt = select(User).where(User.deleted_at.is_(None))
+        
+        if status:
+            stmt = stmt.where(User.status == status)
+        
+        stmt = stmt.order_by(User.created_at.desc())
+        stmt = stmt.offset(offset).limit(limit)
+        
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+    
+    async def create(self, user: User) -> User:
+        """Create new user"""
+        self.session.add(user)
+        await self.session.flush()  # Get ID without committing
+        await self.session.refresh(user)
+        return user
+    
+    async def update(self, user: User) -> User:
+        """Update existing user"""
+        await self.session.flush()
+        await self.session.refresh(user)
+        return user
+    
+    async def soft_delete(self, user_id: str) -> None:
+        """Soft delete user"""
+        stmt = update(User).where(
+            User.id == user_id
+        ).values(
+            deleted_at=datetime.utcnow()
+        )
+        await self.session.execute(stmt)
+    
+    async def count(self, status: Optional[str] = None) -> int:
+        """Count users"""
+        from sqlalchemy import func
+        
+        stmt = select(func.count(User.id)).where(User.deleted_at.is_(None))
+        
+        if status:
+            stmt = stmt.where(User.status == status)
+        
+        result = await self.session.execute(stmt)
+        return result.scalar_one()
+```
+
+### N+1 Query Problem Prevention
+
+```typescript
+// ❌ BAD: N+1 query problem
+async function getOrdersWithUsers() {
+  const orders = await Order.findAll();  // 1 query
+  
+  // N queries (one per order)
+  for (const order of orders) {
+    order.user = await User.findByPk(order.userId);
+  }
+  
+  return orders;
+}
+
+// ✅ GOOD: Eager loading with joins
+async function getOrdersWithUsers() {
+  const orders = await Order.findAll({
+    include: [
+      {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'email', 'name'],  // Only needed fields
+      },
+    ],
+  });
+  
+  return orders;  // Single query with JOIN
+}
+
+// ✅ GOOD: Manual join with raw SQL (for complex queries)
+async function getOrdersWithUsersRaw() {
+  const query = `
+    SELECT 
+      o.*,
+      u.id AS user_id,
+      u.email AS user_email,
+      u.name AS user_name
+    FROM orders o
+    INNER JOIN users u ON o.user_id = u.id
+    WHERE o.deleted_at IS NULL
+    ORDER BY o.created_at DESC
+    LIMIT 20
+  `;
+  
+  return await db.query(query);
+}
+
+// ✅ GOOD: DataLoader pattern (GraphQL)
+import DataLoader from 'dataloader';
+
+const userLoader = new DataLoader(async (userIds: string[]) => {
+  const users = await User.findAll({
+    where: { id: userIds },
+  });
+  
+  const userMap = new Map(users.map(u => [u.id, u]));
+  return userIds.map(id => userMap.get(id));
+});
+
+// Usage
+const orders = await Order.findAll();
+const ordersWithUsers = await Promise.all(
+  orders.map(async (order) => ({
+    ...order.toJSON(),
+    user: await userLoader.load(order.userId),
+  }))
+);
+```
+
+### Database Migrations
+
+```python
+# ✅ GOOD: Alembic migration (Python)
+"""add_users_table
+
+Revision ID: 001
+Revises: 
+Create Date: 2025-01-01 10:00:00.000000
+
+"""
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+# revision identifiers
+revision = '001'
+down_revision = None
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    """Create users table"""
+    op.create_table(
+        'users',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text('gen_random_uuid()')),
+        sa.Column('email', sa.String(255), nullable=False, unique=True),
+        sa.Column('name', sa.String(100), nullable=False),
+        sa.Column('password_hash', sa.String(255), nullable=False),
+        sa.Column('role', sa.String(50), nullable=False, server_default='user'),
+        sa.Column('status', sa.String(50), nullable=False, server_default='active'),
+        sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text('NOW()')),
+        sa.Column('updated_at', sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text('NOW()')),
+        sa.Column('deleted_at', sa.TIMESTAMP(timezone=True), nullable=True),
+    )
+    
+    # Create indexes
+    op.create_index('idx_users_email', 'users', ['email'], unique=True, postgresql_where=sa.text('deleted_at IS NULL'))
+    op.create_index('idx_users_status', 'users', ['status'], postgresql_where=sa.text('deleted_at IS NULL'))
+
+def downgrade():
+    """Drop users table"""
+    op.drop_index('idx_users_status', table_name='users')
+    op.drop_index('idx_users_email', table_name='users')
+    op.drop_table('users')
+
+# ✅ GOOD: Zero-downtime migration strategy
+# 1. Add new column (nullable)
+# 2. Backfill data in batches
+# 3. Make column NOT NULL
+# 4. Remove old column (in separate migration)
+
+def upgrade():
+    # Step 1: Add new column (nullable)
+    op.add_column('users', sa.Column('new_email', sa.String(255), nullable=True))
+    
+    # Step 2: Backfill data (do in application code or separate script for large tables)
+    # op.execute('UPDATE users SET new_email = email WHERE new_email IS NULL')
+    
+    # Step 3: Make NOT NULL (in separate migration after backfill)
+    # op.alter_column('users', 'new_email', nullable=False)
+    
+    # Step 4: Drop old column (in yet another migration)
+    # op.drop_column('users', 'email')
+    # op.alter_column('users', 'new_email', new_column_name='email')
+```
+
+### Query Optimization
+
+```sql
+-- ✅ GOOD: Use EXPLAIN ANALYZE to optimize queries
+
+-- Check query plan
+EXPLAIN ANALYZE
+SELECT u.*, COUNT(o.id) AS order_count
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id
+WHERE u.status = 'active'
+  AND u.deleted_at IS NULL
+GROUP BY u.id
+ORDER BY u.created_at DESC
+LIMIT 20;
+
+-- Add indexes based on EXPLAIN output
+-- If you see "Seq Scan" on large tables, add index
+CREATE INDEX idx_users_status_created_at ON users(status, created_at DESC) WHERE deleted_at IS NULL;
+
+-- ✅ GOOD: Use partial indexes for common filters
+CREATE INDEX idx_orders_pending ON orders(user_id, created_at) WHERE status = 'pending';
+
+-- ✅ GOOD: Use composite indexes for multi-column queries
+CREATE INDEX idx_users_search ON users(status, role, created_at DESC) WHERE deleted_at IS NULL;
+
+-- ✅ GOOD: Use covering indexes (include needed columns)
+CREATE INDEX idx_orders_user_summary ON orders(user_id) INCLUDE (status, total_amount, created_at);
+
+-- Query performance guidelines:
+-- 1. Indexes on foreign keys
+-- 2. Indexes on commonly filtered columns (WHERE clauses)
+-- 3. Indexes on commonly sorted columns (ORDER BY)
+-- 4. Composite indexes for multi-column queries
+-- 5. Partial indexes for filtered queries (WHERE status = 'active')
+-- 6. Avoid indexes on low-cardinality columns (boolean)
+-- 7. Monitor index usage: SELECT * FROM pg_stat_user_indexes;
+```
+
+---
+
+## Caching Strategies
+
+### Redis Caching Patterns
+
+```typescript
+// ✅ GOOD: Cache-aside pattern (most common)
+import Redis from 'ioredis';
+
+const redis = new Redis({
+  host: process.env.REDIS_HOST,
+  port: parseInt(process.env.REDIS_PORT),
+  password: process.env.REDIS_PASSWORD,
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  },
+});
+
+class UserService {
+  constructor(
+    private userRepository: UserRepository,
+    private cache: Redis
+  ) {}
+  
+  async getUser(userId: string): Promise<User> {
+    const cacheKey = `user:${userId}`;
+    
+    // 1. Try cache first
+    const cached = await this.cache.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+    
+    // 2. Cache miss - get from database
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new UserNotFoundError(userId);
+    }
+    
+    // 3. Store in cache (TTL: 5 minutes)
+    await this.cache.setex(cacheKey, 300, JSON.stringify(user));
+    
+    return user;
+  }
+  
+  async updateUser(userId: string, data: UpdateUserData): Promise<User> {
+    // Update database
+    const user = await this.userRepository.update(userId, data);
+    
+    // Invalidate cache
+    await this.cache.del(`user:${userId}`);
+    
+    return user;
+  }
+}
+
+// ✅ GOOD: Cache warming (preload hot data)
+async function warmCache() {
+  // Get most accessed users
+  const hotUsers = await userRepository.findTopAccessed(100);
+  
+  // Preload into cache
+  const pipeline = redis.pipeline();
+  for (const user of hotUsers) {
+    pipeline.setex(`user:${user.id}`, 300, JSON.stringify(user));
+  }
+  await pipeline.exec();
+}
+
+// ✅ GOOD: Cache patterns for different data types
+
+// 1. Simple key-value
+await redis.set('config:feature_flags', JSON.stringify(flags));
+
+// 2. Hash (for objects)
+await redis.hset('user:123', {
+  name: 'John',
+  email: 'john@example.com',
+  role: 'admin',
+});
+
+// 3. List (for queues, recent items)
+await redis.lpush('recent_orders', orderId);
+await redis.ltrim('recent_orders', 0, 99);  // Keep only 100 most recent
+
+// 4. Set (for unique items, tags)
+await redis.sadd('user:123:tags', 'premium', 'verified');
+
+// 5. Sorted set (for leaderboards, rankings)
+await redis.zadd('leaderboard', score, userId);
+await redis.zrange('leaderboard', 0, 9);  // Top 10
+
+// 6. Cache with tags (for bulk invalidation)
+class CacheManager {
+  async set(key: string, value: any, ttl: number, tags: string[] = []) {
+    await redis.setex(key, ttl, JSON.stringify(value));
+    
+    // Add to tag sets
+    if (tags.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const tag of tags) {
+        pipeline.sadd(`tag:${tag}`, key);
+      }
+      await pipeline.exec();
+    }
+  }
+  
+  async invalidateTag(tag: string) {
+    // Get all keys with this tag
+    const keys = await redis.smembers(`tag:${tag}`);
+    
+    if (keys.length > 0) {
+      // Delete all keys
+      await redis.del(...keys);
+    }
+    
+    // Remove tag set
+    await redis.del(`tag:${tag}`);
+  }
+}
+
+// Usage
+await cacheManager.set('user:123', user, 300, ['users', 'user:123']);
+await cacheManager.set('order:456', order, 300, ['orders', 'user:123']);
+
+// Invalidate all user-related caches
+await cacheManager.invalidateTag('user:123');
+```
+
+### Caching Best Practices
+
+```python
+# ✅ GOOD: Cache invalidation strategies
+
+from functools import wraps
+import hashlib
+import json
+
+def cache_result(ttl: int = 300, key_prefix: str = ''):
+    """Decorator for caching function results"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Generate cache key from function name and arguments
+            key_parts = [key_prefix or func.__name__]
+            key_parts.extend(str(arg) for arg in args)
+            key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
+            
+            cache_key = hashlib.md5(':'.join(key_parts).encode()).hexdigest()
+            
+            # Try cache
+            cached = await redis.get(f'cache:{cache_key}')
+            if cached:
+                return json.loads(cached)
+            
+            # Execute function
+            result = await func(*args, **kwargs)
+            
+            # Cache result
+            await redis.setex(f'cache:{cache_key}', ttl, json.dumps(result))
+            
+            return result
+        return wrapper
+    return decorator
+
+# Usage
+@cache_result(ttl=600, key_prefix='user_orders')
+async def get_user_orders(user_id: str, status: str = None):
+    return await order_repository.find_by_user(user_id, status)
+
+# ✅ GOOD: Cache stampede prevention (dog-piling)
+from asyncio import Lock
+
+cache_locks = {}
+
+async def get_with_lock(key: str, fetch_func, ttl: int = 300):
+    """Prevent cache stampede with locks"""
+    # Try cache first
+    cached = await redis.get(key)
+    if cached:
+        return json.loads(cached)
+    
+    # Acquire lock for this key
+    if key not in cache_locks:
+        cache_locks[key] = Lock()
+    
+    async with cache_locks[key]:
+        # Double-check cache (another request may have filled it)
+        cached = await redis.get(key)
+        if cached:
+            return json.loads(cached)
+        
+        # Fetch data
+        data = await fetch_func()
+        
+        # Store in cache
+        await redis.setex(key, ttl, json.dumps(data))
+        
+        return data
+
+# ✅ GOOD: Stale-while-revalidate pattern
+async def get_with_swr(key: str, fetch_func, ttl: int = 300, stale_ttl: int = 600):
+    """Serve stale data while refreshing in background"""
+    cached = await redis.get(key)
+    cache_age = await redis.ttl(key)
+    
+    # Fresh cache hit
+    if cached and cache_age > 0:
+        return json.loads(cached)
+    
+    # Stale cache - serve stale, refresh in background
+    if cached and cache_age == -1:  # Key exists but no TTL
+        # Trigger background refresh (fire and forget)
+        asyncio.create_task(refresh_cache(key, fetch_func, ttl))
+        return json.loads(cached)
+    
+    # Cache miss - fetch now
+    data = await fetch_func()
+    await redis.setex(key, ttl, json.dumps(data))
+    return data
+
+async def refresh_cache(key: str, fetch_func, ttl: int):
+    """Background cache refresh"""
+    try:
+        data = await fetch_func()
+        await redis.setex(key, ttl, json.dumps(data))
+    except Exception as e:
+        logger.error(f'Failed to refresh cache for {key}', exc_info=e)
+```
+
+---
+
+## Background Jobs & Message Queues
+
+### Celery (Python) Background Tasks
+
+```python
+# ✅ GOOD: Celery task implementation
+from celery import Celery, Task
+from celery.schedules import crontab
+
+app = Celery('tasks',
+             broker='redis://localhost:6379/0',
+             backend='redis://localhost:6379/0')
+
+# Configuration
+app.conf.update(
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+    task_track_started=True,
+    task_time_limit=3600,  # 1 hour hard limit
+    task_soft_time_limit=3000,  # 50 minutes soft limit
+    task_acks_late=True,  # Acknowledge after task completes
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,  # One task at a time
+)
+
+# Base task with retry logic
+class BaseTask(Task):
+    autoretry_for = (Exception,)
+    retry_kwargs = {'max_retries': 3}
+    retry_backoff = True  # Exponential backoff
+    retry_backoff_max = 600  # Max 10 minutes
+    retry_jitter = True  # Add randomness to avoid thundering herd
+
+@app.task(base=BaseTask)
+def send_welcome_email(user_id: str):
+    """Send welcome email to new user"""
+    user = user_repository.find_by_id(user_id)
+    if not user:
+        raise ValueError(f'User {user_id} not found')
+    
+    email_service.send_template(
+        to=user.email,
+        template='welcome',
+        context={'name': user.name}
+    )
+    
+    logger.info(f'Sent welcome email to {user.email}')
+
+@app.task(base=BaseTask, time_limit=300)
+def generate_report(report_id: str):
+    """Generate report (CPU-intensive task)"""
+    report = report_repository.find_by_id(report_id)
+    
+    # Mark as processing
+    report.status = 'processing'
+    report_repository.save(report)
+    
+    try:
+        # Generate report
+        data = report_generator.generate(report.config)
+        
+        # Save result
+        report.status = 'completed'
+        report.result = data
+        report_repository.save(report)
+        
+    except Exception as e:
+        report.status = 'failed'
+        report.error = str(e)
+        report_repository.save(report)
+        raise
+
+@app.task
+def cleanup_old_sessions():
+    """Periodic cleanup task"""
+    cutoff_date = datetime.utcnow() - timedelta(days=30)
+    deleted_count = session_repository.delete_older_than(cutoff_date)
+    logger.info(f'Cleaned up {deleted_count} old sessions')
+
+# Periodic tasks (cron-like)
+app.conf.beat_schedule = {
+    'cleanup-sessions-daily': {
+        'task': 'tasks.cleanup_old_sessions',
+        'schedule': crontab(hour=2, minute=0),  # 2 AM daily
+    },
+    'send-digest-emails-weekly': {
+        'task': 'tasks.send_digest_emails',
+        'schedule': crontab(day_of_week=1, hour=8, minute=0),  # Monday 8 AM
+    },
+}
+
+# Task chaining and groups
+from celery import chain, group, chord
+
+# Chain: Execute tasks sequentially
+result = chain(
+    task1.s(arg1),
+    task2.s(),  # Gets result from task1
+    task3.s()
+).apply_async()
+
+# Group: Execute tasks in parallel
+job = group(
+    send_email.s(user.email) for user in users
+)
+result = job.apply_async()
+
+# Chord: Group + callback after all complete
+callback = generate_summary_report.s()
+job = chord(
+    process_user_data.s(user.id) for user in users
+)(callback)
+```
+
+### Bull Queue (Node.js) Background Jobs
+
+```typescript
+// ✅ GOOD: Bull queue implementation
+import Queue from 'bull';
+import IORedis from 'ioredis';
+
+// Redis connection
+const redisConnection = new IORedis({
+  host: process.env.REDIS_HOST,
+  port: parseInt(process.env.REDIS_PORT),
+  maxRetriesPerRequest: null,  // Required for Bull
+});
+
+// Create queue
+const emailQueue = new Queue('email', {
+  redis: redisConnection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 2000,
+    },
+    removeOnComplete: 100,  // Keep last 100 completed jobs
+    removeOnFail: 500,  // Keep last 500 failed jobs
+  },
+});
+
+// Add job to queue
+async function sendWelcomeEmail(userId: string) {
+  await emailQueue.add(
+    'welcome',
+    { userId },
+    {
+      priority: 1,  // Higher priority
+      delay: 5000,  // Wait 5 seconds before processing
+    }
+  );
+}
+
+// Process jobs
+emailQueue.process('welcome', async (job) => {
+  const { userId } = job.data;
+  
+  job.progress(0);  // Report progress
+  
+  // Get user
+  const user = await userRepository.findById(userId);
+  if (!user) {
+    throw new Error(`User ${userId} not found`);
+  }
+  
+  job.progress(50);
+  
+  // Send email
+  await emailService.sendTemplate(user.email, 'welcome', {
+    name: user.name,
+  });
+  
+  job.progress(100);
+  
+  logger.info(`Sent welcome email to ${user.email}`);
+});
+
+// Event handlers
+emailQueue.on('completed', (job, result) => {
+  logger.info(`Job ${job.id} completed`);
+});
+
+emailQueue.on('failed', (job, err) => {
+  logger.error(`Job ${job.id} failed: ${err.message}`);
+});
+
+emailQueue.on('progress', (job, progress) => {
+  logger.debug(`Job ${job.id} progress: ${progress}%`);
+});
+
+// Scheduled jobs (cron)
+import { CronJob } from 'cron';
+
+new CronJob('0 2 * * *', async () => {
+  // Run at 2 AM daily
+  await cleanupQueue.add('daily-cleanup', {});
+}, null, true, 'America/New_York');
+
+// Rate limiting
+const rateLimitedQueue = new Queue('rate-limited', {
+  redis: redisConnection,
+  limiter: {
+    max: 100,  // Max 100 jobs
+    duration: 60000,  // Per 60 seconds
+  },
+});
+```
+
+### RabbitMQ Message Patterns
+
+```python
+# ✅ GOOD: RabbitMQ with pika (Python)
+import pika
+import json
+from typing import Callable
+
+class RabbitMQClient:
+    def __init__(self, host: str = 'localhost'):
+        self.connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host=host)
+        )
+        self.channel = self.connection.channel()
+    
+    def publish(self, exchange: str, routing_key: str, message: dict):
+        """Publish message to exchange"""
+        self.channel.basic_publish(
+            exchange=exchange,
+            routing_key=routing_key,
+            body=json.dumps(message),
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # Persistent
+                content_type='application/json',
+            )
+        )
+    
+    def consume(self, queue: str, callback: Callable):
+        """Consume messages from queue"""
+        self.channel.basic_qos(prefetch_count=1)  # One message at a time
+        
+        def on_message(ch, method, properties, body):
+            try:
+                message = json.loads(body)
+                callback(message)
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+            except Exception as e:
+                logger.error(f'Error processing message: {e}')
+                # Reject and requeue
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+        
+        self.channel.basic_consume(
+            queue=queue,
+            on_message_callback=on_message
+        )
+        
+        self.channel.start_consuming()
+
+# Usage
+rabbitmq = RabbitMQClient()
+
+# Declare exchange and queue
+rabbitmq.channel.exchange_declare(
+    exchange='events',
+    exchange_type='topic',
+    durable=True
+)
+
+rabbitmq.channel.queue_declare(queue='email_queue', durable=True)
+rabbitmq.channel.queue_bind(
+    exchange='events',
+    queue='email_queue',
+    routing_key='user.created'
+)
+
+# Publish event
+rabbitmq.publish(
+    exchange='events',
+    routing_key='user.created',
+    message={
+        'user_id': '123',
+        'email': 'user@example.com',
+        'timestamp': datetime.utcnow().isoformat()
+    }
+)
+
+# Consume events
+def handle_user_created(message: dict):
+    user_id = message['user_id']
+    send_welcome_email(user_id)
+
+rabbitmq.consume('email_queue', handle_user_created)
+```
+
+---
+
+## Microservices Patterns
+
+### Service Communication
+
+```typescript
+// ✅ GOOD: HTTP client with retry and circuit breaker
+import axios, { AxiosInstance } from 'axios';
+import axiosRetry from 'axios-retry';
+import CircuitBreaker from 'opossum';
+
+class ServiceClient {
+  private client: AxiosInstance;
+  private breaker: CircuitBreaker;
+  
+  constructor(baseURL: string) {
+    // HTTP client with retry
+    this.client = axios.create({
+      baseURL,
+      timeout: 5000,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    // Retry configuration
+    axiosRetry(this.client, {
+      retries: 3,
+      retryDelay: axiosRetry.exponentialDelay,
+      retryCondition: (error) => {
+        // Retry on network errors and 5xx
+        return axiosRetry.isNetworkOrIdempotentRequestError(error) ||
+               (error.response?.status >= 500);
+      },
+    });
+    
+    // Circuit breaker
+    const breakerOptions = {
+      timeout: 5000,  // If function takes longer, trigger fallback
+      errorThresholdPercentage: 50,  // Break if 50% of requests fail
+      resetTimeout: 30000,  // Try again after 30 seconds
+    };
+    
+    this.breaker = new CircuitBreaker(
+      async (config) => this.client.request(config),
+      breakerOptions
+    );
+    
+    // Circuit breaker events
+    this.breaker.on('open', () => {
+      logger.warn(`Circuit breaker opened for ${baseURL}`);
+    });
+    
+    this.breaker.on('halfOpen', () => {
+      logger.info(`Circuit breaker half-open for ${baseURL}`);
+    });
+    
+    this.breaker.on('close', () => {
+      logger.info(`Circuit breaker closed for ${baseURL}`);
+    });
+  }
+  
+  async get<T>(path: string): Promise<T> {
+    try {
+      const response = await this.breaker.fire({
+        method: 'GET',
+        url: path,
+      });
+      return response.data;
+    } catch (error) {
+      logger.error(`Service call failed: ${path}`, error);
+      throw error;
+    }
+  }
+  
+  async post<T>(path: string, data: any): Promise<T> {
+    const response = await this.breaker.fire({
+      method: 'POST',
+      url: path,
+      data,
+    });
+    return response.data;
+  }
+}
+
+// Usage
+const userService = new ServiceClient('http://user-service:8080');
+const user = await userService.get<User>('/api/v1/users/123');
+```
+
+### Saga Pattern (Distributed Transactions)
+
+```python
+# ✅ GOOD: Saga orchestrator for distributed transactions
+from enum import Enum
+from typing import List, Callable
+
+class SagaStep:
+    def __init__(
+        self,
+        name: str,
+        action: Callable,
+        compensate: Callable
+    ):
+        self.name = name
+        self.action = action
+        self.compensate = compensate
+
+class SagaStatus(Enum):
+    PENDING = 'pending'
+    IN_PROGRESS = 'in_progress'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+    COMPENSATING = 'compensating'
+    COMPENSATED = 'compensated'
+
+class Saga:
+    def __init__(self, saga_id: str, steps: List[SagaStep]):
+        self.saga_id = saga_id
+        self.steps = steps
+        self.completed_steps: List[int] = []
+        self.status = SagaStatus.PENDING
+    
+    async def execute(self):
+        """Execute saga steps"""
+        self.status = SagaStatus.IN_PROGRESS
+        
+        try:
+            for i, step in enumerate(self.steps):
+                logger.info(f'Executing step {i}: {step.name}')
+                await step.action()
+                self.completed_steps.append(i)
+            
+            self.status = SagaStatus.COMPLETED
+            logger.info(f'Saga {self.saga_id} completed successfully')
+            
+        except Exception as e:
+            logger.error(f'Saga {self.saga_id} failed at step {len(self.completed_steps)}: {e}')
+            await self.compensate()
+            raise
+    
+    async def compensate(self):
+        """Rollback completed steps in reverse order"""
+        self.status = SagaStatus.COMPENSATING
+        
+        for i in reversed(self.completed_steps):
+            step = self.steps[i]
+            logger.info(f'Compensating step {i}: {step.name}')
+            try:
+                await step.compensate()
+            except Exception as e:
+                logger.error(f'Compensation failed for step {i}: {e}')
+        
+        self.status = SagaStatus.COMPENSATED
+        logger.info(f'Saga {self.saga_id} compensated')
+
+# Example: Order creation saga
+async def create_order_saga(order_data: dict):
+    saga = Saga('create_order', [
+        # Step 1: Reserve inventory
+        SagaStep(
+            name='reserve_inventory',
+            action=lambda: inventory_service.reserve(order_data['items']),
+            compensate=lambda: inventory_service.release(order_data['items'])
+        ),
+        
+        # Step 2: Charge payment
+        SagaStep(
+            name='charge_payment',
+            action=lambda: payment_service.charge(order_data['amount']),
+            compensate=lambda: payment_service.refund(order_data['payment_id'])
+        ),
+        
+        # Step 3: Create order
+        SagaStep(
+            name='create_order',
+            action=lambda: order_service.create(order_data),
+            compensate=lambda: order_service.delete(order_data['order_id'])
+        ),
+        
+        # Step 4: Send confirmation
+        SagaStep(
+            name='send_confirmation',
+            action=lambda: email_service.send_order_confirmation(order_data),
+            compensate=lambda: None  # No compensation needed
+        ),
+    ])
+    
+    await saga.execute()
+```
+
+---
+
+## Next Checkpoint
+
+Package 2 (Backend) is growing large. 
+
+**Type 'next' to continue with:**
+- Monitoring & Observability (metrics, logging, tracing)
+- API Documentation (OpenAPI, Swagger)
+- Performance Optimization
+- Deployment & DevOps
+
+Or provide feedback to iterate on current backend content.

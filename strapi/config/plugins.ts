@@ -9,10 +9,9 @@ export default ({ env }) => ({
         enabled: true,
         origin: [
           // Production URLs
-          'https://liff-ot-app-raksaard-2de47d0ac48c.herokuapp.com', // Main backend
-          'https://liff-ot-app-positive.vercel.app', // Frontend
-          'https://liff-ot-app-positive.herokuapp.com', // Alternative frontend
-          'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app', // New Vercel URL
+          'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com', // Production backend
+          'https://liff-ot-app-arun.vercel.app', // Production frontend
+          'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app', // Vercel preview URL
           // Development URLs
           'http://localhost:3001', // Local backend
           'http://localhost:5173', // Local Vite frontend

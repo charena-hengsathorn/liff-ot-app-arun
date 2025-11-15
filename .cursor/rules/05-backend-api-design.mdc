@@ -1,0 +1,1074 @@
+# Backend Development Standards - API Design & Architecture
+
+**Application Type:** Apply Intelligently  
+**Applies To:** Backend services, APIs, server-side code  
+**File Pattern:** `backend/**/*.{py,ts,js,go,java,rs}`, `api/**/*`, `services/**/*`
+
+---
+
+## Philosophy: APIs are Contracts, Databases are Assets
+
+**Core Principles:**
+- APIs are public contracts: versioned, documented, backward-compatible
+- Databases are long-lived assets: migrations are sacred, data integrity is paramount
+- Services should be independent, deployable, and observable
+- Performance and scalability must be designed in, not bolted on later
+
+---
+
+## REST API Design
+
+### URL Structure & Naming
+
+```
+# ✅ GOOD: RESTful URL structure
+GET    /api/v1/users                    # List users
+GET    /api/v1/users/{id}               # Get specific user
+POST   /api/v1/users                    # Create user
+PUT    /api/v1/users/{id}               # Update user (full)
+PATCH  /api/v1/users/{id}               # Update user (partial)
+DELETE /api/v1/users/{id}               # Delete user
+
+# Nested resources
+GET    /api/v1/users/{id}/orders        # Get user's orders
+POST   /api/v1/users/{id}/orders        # Create order for user
+
+# Filtering, sorting, pagination
+GET    /api/v1/users?status=active&sort=created_at&page=2&limit=20
+
+# ❌ BAD: Non-RESTful URLs
+GET    /api/v1/getUsers                 # Don't use verbs in URLs
+POST   /api/v1/user/create              # POST already indicates creation
+GET    /api/v1/users/list               # Redundant
+```
+
+### HTTP Methods & Status Codes
+
+```python
+# Proper HTTP method usage
+@app.route('/api/v1/users', methods=['GET'])
+def list_users():
+    """List users - idempotent, safe"""
+    users = user_service.list_users(page=request.args.get('page', 1))
+    return jsonify(users), 200  # OK
+
+@app.route('/api/v1/users', methods=['POST'])
+def create_user():
+    """Create user - non-idempotent"""
+    user = user_service.create(request.json)
+    return jsonify(user), 201  # Created
+    # Location header: /api/v1/users/{id}
+
+@app.route('/api/v1/users/<user_id>', methods=['PUT'])
+def update_user(user_id):
+    """Update user - idempotent"""
+    user = user_service.update(user_id, request.json)
+    return jsonify(user), 200  # OK
+
+@app.route('/api/v1/users/<user_id>', methods=['PATCH'])
+def partial_update_user(user_id):
+    """Partial update - idempotent"""
+    user = user_service.partial_update(user_id, request.json)
+    return jsonify(user), 200  # OK
+
+@app.route('/api/v1/users/<user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    """Delete user - idempotent"""
+    user_service.delete(user_id)
+    return '', 204  # No Content
+```
+
+### Status Code Guidelines
+
+```python
+# Success Codes
+200  # OK - GET, PUT, PATCH success
+201  # Created - POST success (include Location header)
+202  # Accepted - Async operation started
+204  # No Content - DELETE success, no body returned
+
+# Client Error Codes
+400  # Bad Request - Invalid input, validation failed
+401  # Unauthorized - Missing or invalid authentication
+403  # Forbidden - Authenticated but not authorized
+404  # Not Found - Resource doesn't exist
+409  # Conflict - Duplicate resource, version conflict
+422  # Unprocessable Entity - Valid syntax but semantic errors
+429  # Too Many Requests - Rate limit exceeded
+
+# Server Error Codes
+500  # Internal Server Error - Unexpected error
+502  # Bad Gateway - Upstream service error
+503  # Service Unavailable - Temporarily down
+504  # Gateway Timeout - Upstream timeout
+```
+
+### Error Response Format (Standardized)
+
+```typescript
+// ✅ GOOD: Consistent error response structure
+interface ErrorResponse {
+  error: {
+    code: string;           // Machine-readable error code
+    message: string;        // Human-readable message
+    details?: any;          // Additional context
+    trace_id: string;       // For debugging/support
+    timestamp: string;      // ISO 8601
+  };
+}
+
+// Example error responses
+app.post('/api/v1/users', async (req, res) => {
+  try {
+    const user = await userService.create(req.body);
+    res.status(201).json(user);
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid user data',
+          details: {
+            fields: error.fields,
+          },
+          trace_id: req.traceId,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+    
+    if (error instanceof DuplicateEmailError) {
+      return res.status(409).json({
+        error: {
+          code: 'DUPLICATE_EMAIL',
+          message: 'Email already registered',
+          details: {
+            email: req.body.email,
+          },
+          trace_id: req.traceId,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+    
+    // Unexpected error
+    logger.error('Unexpected error creating user', {
+      error,
+      trace_id: req.traceId,
+    });
+    
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+        trace_id: req.traceId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+});
+```
+
+### Request Validation
+
+```python
+from pydantic import BaseModel, EmailStr, constr, validator
+
+# ✅ GOOD: Schema validation with Pydantic
+class CreateUserRequest(BaseModel):
+    email: EmailStr  # Validates email format
+    name: constr(min_length=2, max_length=100)  # Length constraints
+    password: constr(min_length=8)
+    age: Optional[int] = None
+    
+    @validator('password')
+    def validate_password(cls, v):
+        """Password must contain uppercase, lowercase, digit"""
+        if not any(c.isupper() for c in v):
+            raise ValueError('Password must contain uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('Password must contain lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('Password must contain digit')
+        return v
+    
+    @validator('age')
+    def validate_age(cls, v):
+        """Age must be 18-120"""
+        if v is not None and (v < 18 or v > 120):
+            raise ValueError('Age must be between 18 and 120')
+        return v
+
+@app.post('/api/v1/users')
+def create_user():
+    try:
+        # Automatic validation
+        request_data = CreateUserRequest(**request.json)
+        user = user_service.create(request_data)
+        return jsonify(user.dict()), 201
+    except ValidationError as e:
+        return jsonify({
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Invalid request data',
+                'details': e.errors(),
+                'trace_id': get_trace_id(),
+            }
+        }), 400
+```
+
+### Pagination
+
+```typescript
+// ✅ GOOD: Cursor-based pagination (for large datasets)
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    next_cursor?: string;
+    prev_cursor?: string;
+    has_more: boolean;
+    total?: number;  // Optional, expensive to compute
+  };
+}
+
+app.get('/api/v1/orders', async (req, res) => {
+  const { cursor, limit = 20 } = req.query;
+  
+  const result = await orderService.list({
+    cursor,
+    limit: Math.min(limit, 100),  // Max 100 items
+  });
+  
+  res.json({
+    data: result.orders,
+    pagination: {
+      next_cursor: result.nextCursor,
+      prev_cursor: result.prevCursor,
+      has_more: result.hasMore,
+    },
+  });
+});
+
+// ✅ ACCEPTABLE: Offset pagination (for small datasets)
+app.get('/api/v1/users', async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+  const offset = (page - 1) * limit;
+  
+  const [users, total] = await Promise.all([
+    userService.list({ offset, limit }),
+    userService.count(),
+  ]);
+  
+  res.json({
+    data: users,
+    pagination: {
+      page,
+      limit,
+      total,
+      total_pages: Math.ceil(total / limit),
+    },
+  });
+});
+```
+
+### API Versioning
+
+```python
+# ✅ GOOD: URL versioning (most common, easiest)
+@app.route('/api/v1/users')
+def list_users_v1():
+    """Version 1 of users API"""
+    return jsonify(users)
+
+@app.route('/api/v2/users')
+def list_users_v2():
+    """Version 2 with additional fields"""
+    return jsonify(users_with_extra_fields)
+
+# ✅ GOOD: Header versioning (cleaner URLs)
+@app.route('/api/users')
+def list_users():
+    version = request.headers.get('API-Version', 'v1')
+    if version == 'v2':
+        return jsonify(users_with_extra_fields)
+    return jsonify(users)
+
+# Deprecation workflow
+# 1. Release v2 alongside v1
+# 2. Announce v1 deprecation (6 months notice)
+# 3. Return deprecation warning in v1 responses
+# 4. Remove v1 after grace period
+
+@app.route('/api/v1/users')
+def list_users_v1():
+    response = jsonify(users)
+    response.headers['Deprecation'] = 'true'
+    response.headers['Sunset'] = '2026-06-01'  # Removal date
+    response.headers['Link'] = '</api/v2/users>; rel="successor-version"'
+    return response
+```
+
+### Idempotency
+
+```typescript
+// ✅ GOOD: Idempotency keys for non-idempotent operations
+import { v4 as uuidv4 } from 'uuid';
+import Redis from 'ioredis';
+
+const redis = new Redis();
+
+app.post('/api/v1/payments', async (req, res) => {
+  const idempotencyKey = req.headers['idempotency-key'];
+  
+  if (!idempotencyKey) {
+    return res.status(400).json({
+      error: {
+        code: 'MISSING_IDEMPOTENCY_KEY',
+        message: 'Idempotency-Key header required for payment operations',
+      },
+    });
+  }
+  
+  // Check if request already processed
+  const cachedResponse = await redis.get(`idempotency:${idempotencyKey}`);
+  if (cachedResponse) {
+    return res.status(200).json(JSON.parse(cachedResponse));
+  }
+  
+  try {
+    // Process payment
+    const payment = await paymentService.charge(req.body);
+    
+    // Cache response for 24 hours
+    await redis.setex(
+      `idempotency:${idempotencyKey}`,
+      86400,
+      JSON.stringify(payment)
+    );
+    
+    res.status(201).json(payment);
+  } catch (error) {
+    // Don't cache errors
+    throw error;
+  }
+});
+```
+
+---
+
+## GraphQL API Design
+
+### Schema Design
+
+```graphql
+# ✅ GOOD: Well-structured GraphQL schema
+
+type Query {
+  # Single object queries
+  user(id: ID!): User
+  order(id: ID!): Order
+  
+  # List queries with pagination
+  users(
+    page: Int = 1
+    limit: Int = 20
+    filter: UserFilter
+    sort: UserSort
+  ): UserConnection!
+  
+  # Search
+  searchUsers(query: String!): [User!]!
+}
+
+type Mutation {
+  # Create
+  createUser(input: CreateUserInput!): UserPayload!
+  
+  # Update
+  updateUser(id: ID!, input: UpdateUserInput!): UserPayload!
+  
+  # Delete
+  deleteUser(id: ID!): DeletePayload!
+}
+
+# Input types for mutations
+input CreateUserInput {
+  email: String!
+  name: String!
+  password: String!
+}
+
+input UpdateUserInput {
+  name: String
+  email: String
+}
+
+# Payload types (include errors)
+type UserPayload {
+  user: User
+  errors: [Error!]
+}
+
+type DeletePayload {
+  success: Boolean!
+  errors: [Error!]
+}
+
+type Error {
+  code: String!
+  message: String!
+  field: String
+}
+
+# Connection pattern for pagination
+type UserConnection {
+  edges: [UserEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int
+}
+
+type UserEdge {
+  node: User!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# Core types
+type User {
+  id: ID!
+  email: String!
+  name: String!
+  createdAt: DateTime!
+  
+  # Relationships
+  orders(first: Int, after: String): OrderConnection!
+  profile: UserProfile
+}
+
+type Order {
+  id: ID!
+  total: Money!
+  status: OrderStatus!
+  createdAt: DateTime!
+  
+  # Relationships
+  user: User!
+  items: [OrderItem!]!
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+# Custom scalars
+scalar DateTime
+scalar Money
+```
+
+### Resolver Implementation
+
+```typescript
+// ✅ GOOD: Efficient resolvers with DataLoader (N+1 prevention)
+import DataLoader from 'dataloader';
+
+// Batch loader to prevent N+1 queries
+const userLoader = new DataLoader(async (userIds: string[]) => {
+  const users = await userRepository.findByIds(userIds);
+  
+  // Return in same order as input
+  const userMap = new Map(users.map(u => [u.id, u]));
+  return userIds.map(id => userMap.get(id) || null);
+});
+
+const resolvers = {
+  Query: {
+    user: async (_, { id }, context) => {
+      return userLoader.load(id);
+    },
+    
+    users: async (_, { page, limit, filter, sort }, context) => {
+      // Authorization check
+      if (!context.user || !context.user.can('read:users')) {
+        throw new ForbiddenError('Not authorized to list users');
+      }
+      
+      const result = await userRepository.paginate({
+        page,
+        limit,
+        filter,
+        sort,
+      });
+      
+      return {
+        edges: result.users.map(user => ({
+          node: user,
+          cursor: Buffer.from(user.id).toString('base64'),
+        })),
+        pageInfo: {
+          hasNextPage: result.hasMore,
+          hasPreviousPage: page > 1,
+          startCursor: result.users[0]?.id,
+          endCursor: result.users[result.users.length - 1]?.id,
+        },
+        totalCount: result.total,
+      };
+    },
+  },
+  
+  Mutation: {
+    createUser: async (_, { input }, context) => {
+      try {
+        // Validate input
+        const validated = await validateCreateUserInput(input);
+        
+        // Create user
+        const user = await userService.create(validated);
+        
+        return {
+          user,
+          errors: [],
+        };
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          return {
+            user: null,
+            errors: error.errors.map(e => ({
+              code: 'VALIDATION_ERROR',
+              message: e.message,
+              field: e.field,
+            })),
+          };
+        }
+        throw error;
+      }
+    },
+  },
+  
+  User: {
+    // Nested resolver - uses DataLoader
+    orders: async (user, { first, after }, context) => {
+      return orderRepository.findByUserId(user.id, { first, after });
+    },
+    
+    profile: async (user, _, context) => {
+      return profileLoader.load(user.id);
+    },
+  },
+};
+```
+
+### GraphQL Best Practices
+
+```typescript
+// ✅ GOOD: Query complexity analysis (prevent expensive queries)
+import { getComplexity, simpleEstimator } from 'graphql-query-complexity';
+
+app.use('/graphql', async (req, res) => {
+  const complexity = getComplexity({
+    schema,
+    query: req.body.query,
+    variables: req.body.variables,
+    estimators: [
+      simpleEstimator({ defaultComplexity: 1 }),
+    ],
+  });
+  
+  const maxComplexity = 1000;
+  if (complexity > maxComplexity) {
+    return res.status(400).json({
+      errors: [{
+        message: `Query too complex: ${complexity}. Maximum allowed: ${maxComplexity}`,
+      }],
+    });
+  }
+  
+  // Process query
+});
+
+// ✅ GOOD: Depth limiting
+import depthLimit from 'graphql-depth-limit';
+
+const server = new ApolloServer({
+  schema,
+  validationRules: [
+    depthLimit(5),  // Max query depth of 5
+  ],
+});
+
+// ✅ GOOD: Field-level authorization
+const resolvers = {
+  User: {
+    email: (user, _, context) => {
+      // Only show email to user themselves or admins
+      if (context.user?.id === user.id || context.user?.role === 'admin') {
+        return user.email;
+      }
+      return null;  // Hide from others
+    },
+    
+    ssn: (user, _, context) => {
+      // Only admins can see SSN
+      if (context.user?.role !== 'admin') {
+        throw new ForbiddenError('Not authorized to view SSN');
+      }
+      return user.ssn;
+    },
+  },
+};
+```
+
+---
+
+## gRPC Service Design
+
+### Protocol Buffers Schema
+
+```protobuf
+// ✅ GOOD: Well-structured proto file
+syntax = "proto3";
+
+package user.v1;
+
+option go_package = "github.com/yourcompany/proto/user/v1;userv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// User service definition
+service UserService {
+  // Unary RPC
+  rpc GetUser(GetUserRequest) returns (User);
+  rpc CreateUser(CreateUserRequest) returns (User);
+  rpc UpdateUser(UpdateUserRequest) returns (User);
+  rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty);
+  
+  // Server streaming RPC
+  rpc ListUsers(ListUsersRequest) returns (stream User);
+  
+  // Client streaming RPC
+  rpc BatchCreateUsers(stream CreateUserRequest) returns (BatchCreateUsersResponse);
+  
+  // Bidirectional streaming RPC
+  rpc SyncUsers(stream UserSyncRequest) returns (stream UserSyncResponse);
+}
+
+// Messages
+message User {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  UserStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  USER_STATUS_ACTIVE = 1;
+  USER_STATUS_INACTIVE = 2;
+  USER_STATUS_SUSPENDED = 3;
+}
+
+// Request messages
+message GetUserRequest {
+  string id = 1;
+}
+
+message CreateUserRequest {
+  string email = 1;
+  string name = 2;
+  string password = 3;
+}
+
+message UpdateUserRequest {
+  string id = 1;
+  optional string email = 2;
+  optional string name = 3;
+}
+
+message DeleteUserRequest {
+  string id = 1;
+}
+
+message ListUsersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string filter = 3;
+}
+
+message BatchCreateUsersResponse {
+  repeated User users = 1;
+  int32 created_count = 2;
+  repeated Error errors = 3;
+}
+
+// Common error message
+message Error {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+```
+
+### gRPC Service Implementation
+
+```go
+// ✅ GOOD: gRPC service implementation in Go
+package server
+
+import (
+    "context"
+    "errors"
+    
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+    
+    pb "github.com/yourcompany/proto/user/v1"
+)
+
+type UserServer struct {
+    pb.UnimplementedUserServiceServer
+    repo UserRepository
+    logger Logger
+}
+
+func (s *UserServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {
+    // Validate request
+    if req.Id == "" {
+        return nil, status.Error(codes.InvalidArgument, "user ID is required")
+    }
+    
+    // Get user from repository
+    user, err := s.repo.GetByID(ctx, req.Id)
+    if err != nil {
+        if errors.Is(err, ErrNotFound) {
+            return nil, status.Error(codes.NotFound, "user not found")
+        }
+        s.logger.Error("failed to get user", "error", err, "user_id", req.Id)
+        return nil, status.Error(codes.Internal, "internal server error")
+    }
+    
+    // Convert to proto message
+    return toProtoUser(user), nil
+}
+
+func (s *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.User, error) {
+    // Validate request
+    if err := validateCreateUserRequest(req); err != nil {
+        return nil, status.Error(codes.InvalidArgument, err.Error())
+    }
+    
+    // Create user
+    user, err := s.repo.Create(ctx, &User{
+        Email: req.Email,
+        Name: req.Name,
+        PasswordHash: hashPassword(req.Password),
+    })
+    if err != nil {
+        if errors.Is(err, ErrDuplicateEmail) {
+            return nil, status.Error(codes.AlreadyExists, "email already registered")
+        }
+        s.logger.Error("failed to create user", "error", err)
+        return nil, status.Error(codes.Internal, "internal server error")
+    }
+    
+    return toProtoUser(user), nil
+}
+
+// Server streaming
+func (s *UserServer) ListUsers(req *pb.ListUsersRequest, stream pb.UserService_ListUsersServer) error {
+    ctx := stream.Context()
+    
+    // Paginate through users
+    pageSize := req.PageSize
+    if pageSize == 0 {
+        pageSize = 100
+    }
+    
+    cursor := req.PageToken
+    for {
+        users, nextCursor, err := s.repo.List(ctx, cursor, pageSize)
+        if err != nil {
+            return status.Error(codes.Internal, "failed to list users")
+        }
+        
+        // Stream users
+        for _, user := range users {
+            if err := stream.Send(toProtoUser(user)); err != nil {
+                return err
+            }
+        }
+        
+        if nextCursor == "" {
+            break
+        }
+        cursor = nextCursor
+    }
+    
+    return nil
+}
+
+// Error codes mapping
+// InvalidArgument (3) = 400 Bad Request
+// NotFound (5) = 404 Not Found
+// AlreadyExists (6) = 409 Conflict
+// PermissionDenied (7) = 403 Forbidden
+// Unauthenticated (16) = 401 Unauthorized
+// Internal (13) = 500 Internal Server Error
+```
+
+---
+
+## Authentication & Authorization
+
+### JWT Implementation
+
+```typescript
+// ✅ GOOD: JWT with refresh tokens
+import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
+
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET!;
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET!;
+
+interface TokenPayload {
+  userId: string;
+  email: string;
+  role: string;
+}
+
+// Generate access token (short-lived: 15 minutes)
+function generateAccessToken(payload: TokenPayload): string {
+  return jwt.sign(payload, ACCESS_TOKEN_SECRET, {
+    expiresIn: '15m',
+    issuer: 'your-service',
+    audience: 'your-app',
+  });
+}
+
+// Generate refresh token (long-lived: 7 days)
+function generateRefreshToken(payload: TokenPayload): string {
+  const tokenId = uuidv4();
+  
+  const token = jwt.sign(
+    { ...payload, tokenId },
+    REFRESH_TOKEN_SECRET,
+    { expiresIn: '7d' }
+  );
+  
+  // Store refresh token in database for revocation
+  await refreshTokenRepository.create({
+    tokenId,
+    userId: payload.userId,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  });
+  
+  return token;
+}
+
+// Login endpoint
+app.post('/api/v1/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  
+  // Verify credentials
+  const user = await userService.authenticate(email, password);
+  if (!user) {
+    return res.status(401).json({
+      error: {
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid email or password',
+      },
+    });
+  }
+  
+  // Generate tokens
+  const payload = {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  };
+  
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = generateRefreshToken(payload);
+  
+  res.json({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_in: 900,  // 15 minutes in seconds
+    token_type: 'Bearer',
+  });
+});
+
+// Refresh token endpoint
+app.post('/api/v1/auth/refresh', async (req, res) => {
+  const { refresh_token } = req.body;
+  
+  try {
+    // Verify refresh token
+    const decoded = jwt.verify(refresh_token, REFRESH_TOKEN_SECRET) as any;
+    
+    // Check if token is revoked
+    const storedToken = await refreshTokenRepository.findByTokenId(decoded.tokenId);
+    if (!storedToken || storedToken.revoked) {
+      return res.status(401).json({
+        error: {
+          code: 'TOKEN_REVOKED',
+          message: 'Refresh token has been revoked',
+        },
+      });
+    }
+    
+    // Generate new access token
+    const accessToken = generateAccessToken({
+      userId: decoded.userId,
+      email: decoded.email,
+      role: decoded.role,
+    });
+    
+    res.json({
+      access_token: accessToken,
+      expires_in: 900,
+      token_type: 'Bearer',
+    });
+  } catch (error) {
+    return res.status(401).json({
+      error: {
+        code: 'INVALID_TOKEN',
+        message: 'Invalid refresh token',
+      },
+    });
+  }
+});
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      error: {
+        code: 'MISSING_TOKEN',
+        message: 'Authorization header required',
+      },
+    });
+  }
+  
+  const token = authHeader.substring(7);
+  
+  try {
+    const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      error: {
+        code: 'INVALID_TOKEN',
+        message: 'Invalid or expired token',
+      },
+    });
+  }
+}
+```
+
+### Role-Based Access Control (RBAC)
+
+```python
+# ✅ GOOD: RBAC implementation
+from enum import Enum
+from typing import Set
+
+class Permission(Enum):
+    # User permissions
+    READ_USERS = "users:read"
+    WRITE_USERS = "users:write"
+    DELETE_USERS = "users:delete"
+    
+    # Order permissions
+    READ_ORDERS = "orders:read"
+    WRITE_ORDERS = "orders:write"
+    CANCEL_ORDERS = "orders:cancel"
+    
+    # Admin permissions
+    MANAGE_ROLES = "roles:manage"
+    VIEW_ANALYTICS = "analytics:view"
+
+class Role(Enum):
+    GUEST = "guest"
+    USER = "user"
+    MODERATOR = "moderator"
+    ADMIN = "admin"
+
+# Role-permission mapping
+ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
+    Role.GUEST: {
+        Permission.READ_USERS,
+    },
+    Role.USER: {
+        Permission.READ_USERS,
+        Permission.WRITE_USERS,  # Can update their own profile
+        Permission.READ_ORDERS,
+        Permission.WRITE_ORDERS,
+    },
+    Role.MODERATOR: {
+        Permission.READ_USERS,
+        Permission.WRITE_USERS,
+        Permission.DELETE_USERS,
+        Permission.READ_ORDERS,
+        Permission.CANCEL_ORDERS,
+    },
+    Role.ADMIN: set(Permission),  # All permissions
+}
+
+def has_permission(user: User, permission: Permission) -> bool:
+    """Check if user has specific permission"""
+    user_permissions = ROLE_PERMISSIONS.get(user.role, set())
+    return permission in user_permissions
+
+# Decorator for permission checking
+def require_permission(permission: Permission):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user or not has_permission(current_user, permission):
+                return jsonify({
+                    'error': {
+                        'code': 'FORBIDDEN',
+                        'message': f'Permission {permission.value} required',
+                    }
+                }), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+# Usage
+@app.route('/api/v1/users/<user_id>', methods=['DELETE'])
+@require_auth
+@require_permission(Permission.DELETE_USERS)
+def delete_user(user_id):
+    user_service.delete(user_id)
+    return '', 204
+```
+
+---
+
+## Next Checkpoint
+
+**Type 'next' to continue with:**
+- Database Design & Optimization
+- Caching Strategies
+- Background Jobs & Message Queues
+- Microservices Patterns
+- Monitoring & Observability
+
+Or provide feedback to iterate on the API design section.

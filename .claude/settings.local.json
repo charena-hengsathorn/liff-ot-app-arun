@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(psql:*)",
+      "Bash(choco --version:*)",
+      "Bash(choco install:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -49,16 +49,13 @@ const allowedOrigins = [
   'http://localhost:5174', // Vite dev server (alternative)
   'http://localhost:5175', // Vite dev server (alternative)
   'http://localhost:3000', // Alternative dev port
-  'https://liff-ot-app-positive.vercel.app', // Legacy Vercel frontend
-  'https://liff-ot-app-positive.herokuapp.com', // Legacy Heroku frontend
-  'https://liff-ot-app-arun.vercel.app', // New Vercel frontend (production)
+  'https://liff-ot-app-arun.vercel.app', // Production Vercel frontend
   'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app' // Vercel deployment preview (specific)
 ];
 
 // Vercel preview URL patterns (for dynamic branch/PR previews)
 const vercelPreviewPatterns = [
   /^https:\/\/liff-ot-app-arun-.*\.vercel\.app$/, // Any Vercel preview for liff-ot-app-arun
-  /^https:\/\/liff-ot-app-positive-.*\.vercel\.app$/, // Legacy previews
 ];
 
 // Check if origin is allowed (exact match or pattern match)
@@ -2039,14 +2036,14 @@ if (isLocalStrapi) {
       const targetPath = proxyReq.path;
       console.log(`[Strapi Proxy] Proxying admin ${req.method} ${req.path} to ${strapiTarget}${targetPath}`);
       console.log(`[Strapi Proxy] Original URL: ${req.originalUrl || req.url}`);
-      
+
       // Ensure Content-Type is set correctly for POST requests
       if (req.method === 'POST' && req.body) {
         if (!proxyReq.getHeader('content-type')) {
           proxyReq.setHeader('content-type', 'application/json');
         }
       }
-      
+
       // Set timeout on the proxy request (25 seconds, less than Heroku's 30s)
       proxyReq.setTimeout(25000, () => {
         console.error(`[Strapi Proxy] Proxy request timeout for ${req.method} ${req.path} → ${targetPath}`);

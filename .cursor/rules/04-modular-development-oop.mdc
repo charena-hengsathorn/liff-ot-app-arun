@@ -1,0 +1,939 @@
+---
+description: Building components/classes
+alwaysApply: false
+---
+## Component-Based Architecture
+
+### What is a Component?
+
+A component is a self-contained, reusable unit of software that:
+- Has a clear, well-defined interface (public API)
+- Hides its implementation details (encapsulation)
+- Manages its own state and behavior
+- Can be composed with other components
+- Can be replaced with alternative implementations
+
+### Component Types
+
+#### 1. Domain Components (Business Logic)
+```python
+# Rich domain model - NOT anemic!
+class Order:
+    """Order component with rich behavior"""
+    
+    def __init__(self, customer: Customer, items: List[OrderItem]):
+        self._customer = customer
+        self._items = items
+        self._status = OrderStatus.DRAFT
+        self._total = self._calculate_total()
+        self._created_at = datetime.utcnow()
+    
+    def add_item(self, product: Product, quantity: int) -> None:
+        """Add item to order (business rule: max 100 items)"""
+        if len(self._items) >= 100:
+            raise MaxItemsExceededError("Cannot add more than 100 items")
+        
+        item = OrderItem(product, quantity)
+        self._items.append(item)
+        self._total = self._calculate_total()
+    
+    def apply_discount(self, discount: Discount) -> None:
+        """Apply discount (business rule: only one discount per order)"""
+        if not discount.is_applicable_to(self):
+            raise InvalidDiscountError("Discount not applicable to this order")
+        
+        self._discount = discount
+        self._total = self._calculate_total()
+    
+    def submit(self) -> None:
+        """Submit order (business rule: must have items and valid payment)"""
+        if not self._items:
+            raise EmptyOrderError("Cannot submit empty order")
+        
+        if not self._customer.has_valid_payment_method():
+            raise InvalidPaymentError("Customer has no valid payment method")
+        
+        self._status = OrderStatus.SUBMITTED
+        self._submitted_at = datetime.utcnow()
+        
+        # Emit domain event
+        DomainEvents.raise(OrderSubmittedEvent(self))
+    
+    def cancel(self) -> None:
+        """Cancel order (business rule: can only cancel if not shipped)"""
+        if self._status == OrderStatus.SHIPPED:
+            raise CannotCancelShippedOrderError()
+        
+        self._status = OrderStatus.CANCELLED
+        DomainEvents.raise(OrderCancelledEvent(self))
+    
+    def _calculate_total(self) -> Money:
+        """Private method - calculate order total"""
+        subtotal = sum(item.total for item in self._items)
+        discount_amount = self._discount.calculate(subtotal) if self._discount else Money(0)
+        return subtotal - discount_amount
+    
+    @property
+    def total(self) -> Money:
+        """Public property - get order total"""
+        return self._total
+    
+    @property
+    def can_be_cancelled(self) -> bool:
+        """Public property - check if order can be cancelled"""
+        return self._status in [OrderStatus.DRAFT, OrderStatus.SUBMITTED]
+```
+
+**Key Points:**
+- ✅ Rich behavior (not just data bag)
+- ✅ Encapsulation (private fields with `_`)
+- ✅ Business rules enforced in methods
+- ✅ Domain events for side effects
+- ✅ Self-validating (fails fast with clear errors)
+
+#### 2. Service Components (Application Logic)
+```typescript
+// Service component - orchestrates domain objects
+interface IPaymentGateway {
+  charge(amount: Money, paymentMethod: PaymentMethod): Promise<PaymentResult>;
+  refund(transactionId: string, amount: Money): Promise<RefundResult>;
+}
+
+interface IOrderRepository {
+  save(order: Order): Promise<void>;
+  findById(orderId: string): Promise<Order | null>;
+}
+
+interface INotificationService {
+  sendOrderConfirmation(order: Order): Promise<void>;
+}
+
+class OrderService {
+  constructor(
+    private orderRepository: IOrderRepository,
+    private paymentGateway: IPaymentGateway,
+    private notificationService: INotificationService,
+    private logger: ILogger
+  ) {}
+  
+  async submitOrder(orderId: string): Promise<OrderResult> {
+    this.logger.info('Submitting order', { orderId, traceId: getTraceId() });
+    
+    // Fetch order
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) {
+      throw new OrderNotFoundError(orderId);
+    }
+    
+    // Submit order (business logic in domain)
+    order.submit();
+    
+    // Charge payment (external dependency)
+    const paymentResult = await this.paymentGateway.charge(
+      order.total,
+      order.customer.defaultPaymentMethod
+    );
+    
+    if (!paymentResult.success) {
+      order.markPaymentFailed(paymentResult.error);
+      await this.orderRepository.save(order);
+      throw new PaymentFailedError(paymentResult.error);
+    }
+    
+    order.markPaid(paymentResult.transactionId);
+    await this.orderRepository.save(order);
+    
+    // Send notification (async, non-critical)
+    this.notificationService.sendOrderConfirmation(order).catch(error => {
+      this.logger.error('Failed to send order confirmation', { orderId, error });
+    });
+    
+    this.logger.info('Order submitted successfully', { orderId, transactionId: paymentResult.transactionId });
+    
+    return { success: true, order };
+  }
+}
+```
+
+**Key Points:**
+- ✅ Depends on interfaces (DIP)
+- ✅ Orchestrates domain objects and external services
+- ✅ Clear separation: business logic in domain, coordination in service
+- ✅ Proper error handling and logging
+
+#### 3. Infrastructure Components (Adapters)
+```python
+# Adapter component - implements interface
+from typing import Protocol
+
+class IUserRepository(Protocol):
+    """Interface for user repository"""
+    def find_by_id(self, user_id: str) -> Optional[User]:
+        ...
+    
+    def find_by_email(self, email: str) -> Optional[User]:
+        ...
+    
+    def save(self, user: User) -> None:
+        ...
+
+class PostgresUserRepository:
+    """PostgreSQL implementation of user repository"""
+    
+    def __init__(self, db_session: Session):
+        self._session = db_session
+    
+    def find_by_id(self, user_id: str) -> Optional[User]:
+        row = self._session.query(UserModel).filter_by(id=user_id).first()
+        return self._map_to_domain(row) if row else None
+    
+    def find_by_email(self, email: str) -> Optional[User]:
+        row = self._session.query(UserModel).filter_by(email=email).first()
+        return self._map_to_domain(row) if row else None
+    
+    def save(self, user: User) -> None:
+        model = self._map_to_model(user)
+        self._session.merge(model)
+        self._session.commit()
+    
+    def _map_to_domain(self, model: UserModel) -> User:
+        """Convert database model to domain entity"""
+        return User(
+            id=model.id,
+            email=model.email,
+            name=model.name,
+            created_at=model.created_at
+        )
+    
+    def _map_to_model(self, user: User) -> UserModel:
+        """Convert domain entity to database model"""
+        return UserModel(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            created_at=user.created_at
+        )
+
+class InMemoryUserRepository:
+    """In-memory implementation for testing"""
+    
+    def __init__(self):
+        self._users: Dict[str, User] = {}
+    
+    def find_by_id(self, user_id: str) -> Optional[User]:
+        return self._users.get(user_id)
+    
+    def find_by_email(self, email: str) -> Optional[User]:
+        return next((u for u in self._users.values() if u.email == email), None)
+    
+    def save(self, user: User) -> None:
+        self._users[user.id] = user
+```
+
+**Key Points:**
+- ✅ Multiple implementations of same interface
+- ✅ Easy to swap implementations (testing, different databases)
+- ✅ Mapping between domain and infrastructure models
+- ✅ No domain logic in infrastructure
+
+---
+
+## Inheritance: When and How to Use It
+
+### ❌ Common Inheritance Mistakes
+
+```python
+# BAD: Deep inheritance hierarchy
+class Animal:
+    def move(self): pass
+
+class Mammal(Animal):
+    def give_birth(self): pass
+
+class Carnivore(Mammal):
+    def hunt(self): pass
+
+class Dog(Carnivore):
+    def bark(self): pass
+
+class ServiceDog(Dog):
+    def assist_owner(self): pass
+```
+
+**Problems:**
+- Too deep (5 levels)
+- Changes in base class affect all subclasses
+- Hard to understand behavior
+- Violates "prefer composition over inheritance"
+
+### ✅ Good Inheritance: Abstract Base Classes
+
+```python
+from abc import ABC, abstractmethod
+
+# GOOD: Abstract base class for template method pattern
+class ReportGenerator(ABC):
+    """Template method pattern - define algorithm structure"""
+    
+    def generate(self, data: Dict) -> Report:
+        """Template method - defines the algorithm"""
+        validated_data = self.validate(data)
+        processed_data = self.process(validated_data)
+        formatted_report = self.format(processed_data)
+        self.save(formatted_report)
+        return formatted_report
+    
+    @abstractmethod
+    def validate(self, data: Dict) -> Dict:
+        """Subclass must implement validation logic"""
+        pass
+    
+    @abstractmethod
+    def process(self, data: Dict) -> Dict:
+        """Subclass must implement processing logic"""
+        pass
+    
+    @abstractmethod
+    def format(self, data: Dict) -> Report:
+        """Subclass must implement formatting logic"""
+        pass
+    
+    def save(self, report: Report) -> None:
+        """Optional hook - default implementation"""
+        report.save_to_file()
+
+class PDFReportGenerator(ReportGenerator):
+    def validate(self, data: Dict) -> Dict:
+        # PDF-specific validation
+        return data
+    
+    def process(self, data: Dict) -> Dict:
+        # PDF-specific processing
+        return data
+    
+    def format(self, data: Dict) -> Report:
+        # Generate PDF
+        return PDFReport(data)
+
+class ExcelReportGenerator(ReportGenerator):
+    def validate(self, data: Dict) -> Dict:
+        # Excel-specific validation
+        return data
+    
+    def process(self, data: Dict) -> Dict:
+        # Excel-specific processing
+        return data
+    
+    def format(self, data: Dict) -> Report:
+        # Generate Excel
+        return ExcelReport(data)
+```
+
+**When to Use Inheritance:**
+- ✅ Template Method pattern (algorithm structure in base class)
+- ✅ Abstract base classes defining contracts
+- ✅ "IS-A" relationships are genuine (Dog IS-A Animal)
+- ✅ Maximum 2 levels deep
+- ✅ Base class is truly abstract (no concrete implementation)
+
+**When NOT to Use Inheritance:**
+- ❌ For code reuse (use composition instead)
+- ❌ "HAS-A" relationships (Car HAS-A Engine, not Car IS-A Engine)
+- ❌ Multiple unrelated behaviors
+- ❌ Deep hierarchies (>2 levels)
+
+---
+
+## Composition Over Inheritance
+
+### ✅ Composition Pattern
+
+```typescript
+// GOOD: Composition with strategy pattern
+interface ILogger {
+  log(message: string, context: Record<string, any>): void;
+}
+
+interface IMetrics {
+  increment(metric: string, tags: Record<string, string>): void;
+}
+
+interface ICache {
+  get(key: string): Promise<any>;
+  set(key: string, value: any, ttl: number): Promise<void>;
+}
+
+class UserService {
+  constructor(
+    private repository: IUserRepository,
+    private logger: ILogger,
+    private metrics: IMetrics,
+    private cache: ICache
+  ) {}
+  
+  async getUser(userId: string): Promise<User> {
+    // Try cache first
+    const cached = await this.cache.get(`user:${userId}`);
+    if (cached) {
+      this.metrics.increment('cache.hit', { resource: 'user' });
+      return cached;
+    }
+    
+    this.metrics.increment('cache.miss', { resource: 'user' });
+    
+    // Fetch from database
+    const user = await this.repository.findById(userId);
+    if (!user) {
+      this.logger.log('User not found', { userId });
+      throw new UserNotFoundError(userId);
+    }
+    
+    // Cache for 5 minutes
+    await this.cache.set(`user:${userId}`, user, 300);
+    
+    return user;
+  }
+}
+```
+
+**Benefits:**
+- ✅ Each dependency is a separate concern
+- ✅ Easy to mock in tests
+- ✅ Can swap implementations at runtime
+- ✅ Clear dependencies (explicit in constructor)
+
+### Mixin Pattern (Multiple Behaviors)
+
+```python
+# GOOD: Mixins for cross-cutting concerns
+class TimestampMixin:
+    """Adds created_at and updated_at timestamps"""
+    created_at: datetime
+    updated_at: datetime
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.created_at = datetime.utcnow()
+        self.updated_at = datetime.utcnow()
+    
+    def touch(self):
+        """Update the updated_at timestamp"""
+        self.updated_at = datetime.utcnow()
+
+class SoftDeleteMixin:
+    """Adds soft delete functionality"""
+    deleted_at: Optional[datetime] = None
+    
+    def delete(self):
+        """Soft delete - mark as deleted"""
+        self.deleted_at = datetime.utcnow()
+    
+    def restore(self):
+        """Restore soft-deleted record"""
+        self.deleted_at = None
+    
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+
+class AuditMixin:
+    """Adds audit trail"""
+    created_by: str
+    updated_by: str
+    
+    def set_created_by(self, user_id: str):
+        self.created_by = user_id
+    
+    def set_updated_by(self, user_id: str):
+        self.updated_by = user_id
+
+# Compose mixins with domain model
+class User(TimestampMixin, SoftDeleteMixin, AuditMixin):
+    def __init__(self, email: str, name: str):
+        super().__init__()
+        self.email = email
+        self.name = name
+    
+    # User-specific logic here
+```
+
+**When to Use Mixins:**
+- ✅ Cross-cutting concerns (timestamps, soft delete, audit)
+- ✅ Behaviors needed by multiple unrelated classes
+- ✅ Avoid deep inheritance hierarchies
+- ⚠️ Use sparingly (can lead to "mixin soup")
+
+---
+
+## Interface-Driven Design
+
+### Define Interfaces First
+
+```typescript
+// STEP 1: Define interfaces (contracts)
+interface IEmailService {
+  send(to: string, subject: string, body: string): Promise<void>;
+  sendTemplate(to: string, templateId: string, data: Record<string, any>): Promise<void>;
+}
+
+interface IPaymentProcessor {
+  charge(amount: number, token: string): Promise<PaymentResult>;
+  refund(transactionId: string): Promise<RefundResult>;
+}
+
+interface IStorageService {
+  upload(file: Buffer, key: string): Promise<string>;
+  download(key: string): Promise<Buffer>;
+  delete(key: string): Promise<void>;
+}
+
+// STEP 2: Implement interfaces
+class SendGridEmailService implements IEmailService {
+  async send(to: string, subject: string, body: string): Promise<void> {
+    // SendGrid implementation
+  }
+  
+  async sendTemplate(to: string, templateId: string, data: Record<string, any>): Promise<void> {
+    // SendGrid template implementation
+  }
+}
+
+class StripePaymentProcessor implements IPaymentProcessor {
+  async charge(amount: number, token: string): Promise<PaymentResult> {
+    // Stripe implementation
+  }
+  
+  async refund(transactionId: string): Promise<RefundResult> {
+    // Stripe refund implementation
+  }
+}
+
+class S3StorageService implements IStorageService {
+  async upload(file: Buffer, key: string): Promise<string> {
+    // S3 upload implementation
+  }
+  
+  async download(key: string): Promise<Buffer> {
+    // S3 download implementation
+  }
+  
+  async delete(key: string): Promise<void> {
+    // S3 delete implementation
+  }
+}
+
+// STEP 3: Depend on interfaces, not implementations
+class UserRegistrationService {
+  constructor(
+    private emailService: IEmailService,      // Interface, not concrete class
+    private paymentProcessor: IPaymentProcessor,
+    private storageService: IStorageService
+  ) {}
+  
+  async register(userData: UserData): Promise<User> {
+    // Use interfaces - don't know or care about implementation
+    const user = await this.createUser(userData);
+    await this.emailService.send(user.email, 'Welcome!', 'Thanks for joining');
+    
+    if (userData.profilePicture) {
+      const url = await this.storageService.upload(userData.profilePicture, `users/${user.id}`);
+      user.profilePictureUrl = url;
+    }
+    
+    return user;
+  }
+}
+```
+
+**Benefits:**
+- ✅ Easy to swap implementations (testing, different providers)
+- ✅ Clear contracts between components
+- ✅ Dependency Inversion Principle (DIP)
+- ✅ Testability (mock interfaces, not concrete classes)
+
+---
+
+## Plugin Architecture
+
+### Extensible System with Plugins
+
+```python
+from typing import Protocol, List
+
+# Define plugin interface
+class IPlugin(Protocol):
+    """Plugin interface"""
+    
+    @property
+    def name(self) -> str:
+        """Plugin name"""
+        ...
+    
+    def initialize(self, config: Dict) -> None:
+        """Initialize plugin with configuration"""
+        ...
+    
+    def execute(self, context: Dict) -> Dict:
+        """Execute plugin logic"""
+        ...
+    
+    def cleanup(self) -> None:
+        """Cleanup plugin resources"""
+        ...
+
+# Plugin registry
+class PluginRegistry:
+    def __init__(self):
+        self._plugins: Dict[str, IPlugin] = {}
+    
+    def register(self, plugin: IPlugin) -> None:
+        """Register a plugin"""
+        self._plugins[plugin.name] = plugin
+    
+    def get(self, name: str) -> Optional[IPlugin]:
+        """Get plugin by name"""
+        return self._plugins.get(name)
+    
+    def get_all(self) -> List[IPlugin]:
+        """Get all registered plugins"""
+        return list(self._plugins.values())
+
+# Example plugins
+class LoggingPlugin:
+    @property
+    def name(self) -> str:
+        return "logging"
+    
+    def initialize(self, config: Dict) -> None:
+        self.logger = setup_logger(config['log_level'])
+    
+    def execute(self, context: Dict) -> Dict:
+        self.logger.info(f"Processing: {context['action']}")
+        return context
+    
+    def cleanup(self) -> None:
+        self.logger.close()
+
+class MetricsPlugin:
+    @property
+    def name(self) -> str:
+        return "metrics"
+    
+    def initialize(self, config: Dict) -> None:
+        self.metrics_client = MetricsClient(config['metrics_url'])
+    
+    def execute(self, context: Dict) -> Dict:
+        self.metrics_client.increment(context['action'])
+        return context
+    
+    def cleanup(self) -> None:
+        self.metrics_client.flush()
+
+# Application with plugin support
+class Application:
+    def __init__(self, config: Dict):
+        self.registry = PluginRegistry()
+        self._load_plugins(config['plugins'])
+    
+    def _load_plugins(self, plugin_configs: List[Dict]) -> None:
+        """Load and initialize plugins"""
+        for plugin_config in plugin_configs:
+            plugin_class = import_class(plugin_config['class'])
+            plugin = plugin_class()
+            plugin.initialize(plugin_config.get('config', {}))
+            self.registry.register(plugin)
+    
+    def process(self, action: str, data: Dict) -> Dict:
+        """Process with all plugins"""
+        context = {'action': action, 'data': data}
+        
+        # Execute all plugins
+        for plugin in self.registry.get_all():
+            context = plugin.execute(context)
+        
+        return context
+```
+
+**Benefits:**
+- ✅ Add functionality without modifying core code
+- ✅ Plugins can be enabled/disabled via configuration
+- ✅ Third-party developers can extend your system
+- ✅ Open/Closed Principle (OCP)
+
+---
+
+## Component Communication Patterns
+
+### 1. Direct Method Calls (Synchronous)
+```typescript
+// Simple, synchronous communication
+class OrderService {
+  constructor(private inventoryService: InventoryService) {}
+  
+  async createOrder(items: OrderItem[]): Promise<Order> {
+    // Direct call - simple, but creates coupling
+    const available = await this.inventoryService.checkAvailability(items);
+    if (!available) {
+      throw new OutOfStockError();
+    }
+    
+    return this.saveOrder(items);
+  }
+}
+```
+
+**When to Use:**
+- ✅ Simple, synchronous operations
+- ✅ Within same bounded context
+- ✅ Low latency required
+
+### 2. Event-Driven (Asynchronous)
+```python
+# Loose coupling with domain events
+class DomainEventBus:
+    def __init__(self):
+        self._handlers: Dict[Type, List[Callable]] = {}
+    
+    def subscribe(self, event_type: Type, handler: Callable) -> None:
+        if event_type not in self._handlers:
+            self._handlers[event_type] = []
+        self._handlers[event_type].append(handler)
+    
+    def publish(self, event: Any) -> None:
+        event_type = type(event)
+        if event_type in self._handlers:
+            for handler in self._handlers[event_type]:
+                handler(event)
+
+# Domain event
+@dataclass
+class OrderPlacedEvent:
+    order_id: str
+    customer_id: str
+    total: Money
+    timestamp: datetime
+
+# Event handlers
+class InventoryEventHandler:
+    def handle_order_placed(self, event: OrderPlacedEvent) -> None:
+        # Reserve inventory
+        inventory_service.reserve(event.order_id, event.items)
+
+class EmailEventHandler:
+    def handle_order_placed(self, event: OrderPlacedEvent) -> None:
+        # Send confirmation email
+        email_service.send_order_confirmation(event.customer_id, event.order_id)
+
+class AnalyticsEventHandler:
+    def handle_order_placed(self, event: OrderPlacedEvent) -> None:
+        # Track analytics
+        analytics_service.track('order_placed', event.total)
+
+# Setup
+event_bus = DomainEventBus()
+event_bus.subscribe(OrderPlacedEvent, InventoryEventHandler().handle_order_placed)
+event_bus.subscribe(OrderPlacedEvent, EmailEventHandler().handle_order_placed)
+event_bus.subscribe(OrderPlacedEvent, AnalyticsEventHandler().handle_order_placed)
+
+# Usage
+class Order:
+    def place(self) -> None:
+        self._status = OrderStatus.PLACED
+        
+        # Publish event - handlers react independently
+        event_bus.publish(OrderPlacedEvent(
+            order_id=self.id,
+            customer_id=self.customer_id,
+            total=self.total,
+            timestamp=datetime.utcnow()
+        ))
+```
+
+**When to Use:**
+- ✅ Decouple components
+- ✅ Multiple subscribers to same event
+- ✅ Asynchronous processing acceptable
+- ✅ Cross-bounded-context communication
+
+---
+
+## Dependency Injection Containers
+
+### Manual DI (Simple Projects)
+```typescript
+// Manual dependency injection
+class Container {
+  private logger: ILogger;
+  private database: IDatabase;
+  private userRepository: IUserRepository;
+  private userService: UserService;
+  
+  constructor() {
+    // Build dependency graph manually
+    this.logger = new ConsoleLogger();
+    this.database = new PostgresDatabase(process.env.DB_URL);
+    this.userRepository = new PostgresUserRepository(this.database);
+    this.userService = new UserService(this.userRepository, this.logger);
+  }
+  
+  getUserService(): UserService {
+    return this.userService;
+  }
+}
+
+// Usage
+const container = new Container();
+const userService = container.getUserService();
+```
+
+### Automatic DI (Large Projects)
+```python
+# Using dependency-injector library
+from dependency_injector import containers, providers
+
+class Container(containers.DeclarativeContainer):
+    # Configuration
+    config = providers.Configuration()
+    
+    # Infrastructure
+    database = providers.Singleton(
+        Database,
+        url=config.database.url,
+    )
+    
+    cache = providers.Singleton(
+        RedisCache,
+        host=config.redis.host,
+        port=config.redis.port,
+    )
+    
+    logger = providers.Singleton(
+        Logger,
+        level=config.logging.level,
+    )
+    
+    # Repositories
+    user_repository = providers.Factory(
+        PostgresUserRepository,
+        database=database,
+    )
+    
+    order_repository = providers.Factory(
+        PostgresOrderRepository,
+        database=database,
+    )
+    
+    # Services
+    user_service = providers.Factory(
+        UserService,
+        repository=user_repository,
+        logger=logger,
+        cache=cache,
+    )
+    
+    order_service = providers.Factory(
+        OrderService,
+        repository=order_repository,
+        user_service=user_service,
+        logger=logger,
+    )
+
+# Usage
+container = Container()
+container.config.from_yaml('config.yaml')
+
+user_service = container.user_service()
+order_service = container.order_service()
+```
+
+---
+
+## Modular Project Structure
+
+```
+project/
+├── src/
+│   ├── domain/                    # Domain layer (pure business logic)
+│   │   ├── entities/              # Rich domain entities
+│   │   │   ├── user.py
+│   │   │   ├── order.py
+│   │   │   └── product.py
+│   │   ├── value_objects/         # Immutable value objects
+│   │   │   ├── money.py
+│   │   │   ├── email.py
+│   │   │   └── address.py
+│   │   ├── events/                # Domain events
+│   │   │   ├── order_placed.py
+│   │   │   └── user_registered.py
+│   │   ├── repositories/          # Repository interfaces
+│   │   │   ├── user_repository.py
+│   │   │   └── order_repository.py
+│   │   └── services/              # Domain services
+│   │       └── pricing_service.py
+│   │
+│   ├── application/               # Application layer (use cases)
+│   │   ├── services/              # Application services
+│   │   │   ├── user_service.py
+│   │   │   └── order_service.py
+│   │   ├── dtos/                  # Data Transfer Objects
+│   │   │   ├── user_dto.py
+│   │   │   └── order_dto.py
+│   │   └── commands/              # Command handlers (CQRS)
+│   │       ├── create_order_command.py
+│   │       └── update_user_command.py
+│   │
+│   ├── infrastructure/            # Infrastructure layer (adapters)
+│   │   ├── database/              # Database implementations
+│   │   │   ├── postgres/
+│   │   │   │   ├── user_repository_impl.py
+│   │   │   │   └── order_repository_impl.py
+│   │   │   └── migrations/
+│   │   ├── external/              # External service adapters
+│   │   │   ├── stripe_payment.py
+│   │   │   ├── sendgrid_email.py
+│   │   │   └── s3_storage.py
+│   │   ├── web/                   # Web adapters (controllers)
+│   │   │   ├── api/
+│   │   │   │   ├── user_controller.py
+│   │   │   │   └── order_controller.py
+│   │   │   └── middleware/
+│   │   └── messaging/             # Message queue adapters
+│   │       ├── rabbitmq_publisher.py
+│   │       └── rabbitmq_consumer.py
+│   │
+│   ├── shared/                    # Shared kernel
+│   │   ├── utils/
+│   │   ├── types/
+│   │   └── exceptions/
+│   │
+│   └── main.py                    # Application entry point
+│
+├── tests/                         # Tests mirror src structure
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+│
+└── config/                        # Configuration
+    ├── development.yaml
+    └── production.yaml
+```
+
+---
+
+## Review Checklist
+
+Before merging modular code:
+- [ ] Each component has single, clear responsibility
+- [ ] Components are loosely coupled (minimal dependencies)
+- [ ] Components communicate via interfaces, not concrete classes
+- [ ] Inheritance is shallow (≤2 levels) and justified
+- [ ] Composition is preferred over inheritance
+- [ ] Rich domain models (not anemic data bags)
+- [ ] Clear boundaries between layers (domain, application, infrastructure)
+- [ ] Dependencies point inward (DIP)
+- [ ] Components are testable in isolation
+- [ ] Plugin architecture used for extensibility where appropriate
+
+---
+
+**Remember:** Good modularity enables change. Build components like LEGO blocks - small, composable, and reusable. Prefer composition over inheritance. Depend on abstractions, not concretions.

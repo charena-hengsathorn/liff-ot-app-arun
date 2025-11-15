@@ -35,7 +35,7 @@ const getAPIBaseURL = () => {
   const isDev = import.meta.env.DEV;
   return isDev
     ? 'http://localhost:3001'
-    : 'https://liff-ot-app-raksaard-2de47d0ac48c.herokuapp.com';
+    : 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
 };
 
 // Language detection

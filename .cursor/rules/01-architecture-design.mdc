@@ -1,0 +1,431 @@
+---
+description: Architerture questions
+alwaysApply: false
+---
+## SOLID Principles in Practice
+
+### Single Responsibility Principle (SRP)
+```python
+# ❌ BAD: Class has multiple responsibilities
+class User:
+    def save_to_database(self):
+        # Database logic here
+        pass
+    
+    def send_welcome_email(self):
+        # Email logic here
+        pass
+    
+    def validate(self):
+        # Validation logic here
+        pass
+
+# ✅ GOOD: Separate responsibilities
+class User:  # Domain entity
+    def __init__(self, email, name):
+        self.email = email
+        self.name = name
+
+class UserRepository:  # Persistence
+    def save(self, user):
+        pass
+
+class EmailService:  # Communication
+    def send_welcome_email(self, user):
+        pass
+
+class UserValidator:  # Validation
+    def validate(self, user):
+        pass
+```
+
+### Open/Closed Principle (OCP)
+```typescript
+// ❌ BAD: Must modify class to add new payment methods
+class PaymentProcessor {
+  processPayment(method: string, amount: number) {
+    if (method === 'credit_card') {
+      // Credit card logic
+    } else if (method === 'paypal') {
+      // PayPal logic
+    }
+    // Adding new method requires modifying this class
+  }
+}
+
+// ✅ GOOD: Open for extension, closed for modification
+interface PaymentMethod {
+  process(amount: number): Promise<PaymentResult>;
+}
+
+class CreditCardPayment implements PaymentMethod {
+  async process(amount: number): Promise<PaymentResult> {
+    // Credit card logic
+  }
+}
+
+class PayPalPayment implements PaymentMethod {
+  async process(amount: number): Promise<PaymentResult> {
+    // PayPal logic
+  }
+}
+
+class PaymentProcessor {
+  constructor(private paymentMethod: PaymentMethod) {}
+  
+  async processPayment(amount: number): Promise<PaymentResult> {
+    return this.paymentMethod.process(amount);
+  }
+}
+```
+
+### Liskov Substitution Principle (LSP)
+```python
+# ❌ BAD: Subtype changes expected behavior
+class Rectangle:
+    def set_width(self, width):
+        self.width = width
+    
+    def set_height(self, height):
+        self.height = height
+    
+    def area(self):
+        return self.width * self.height
+
+class Square(Rectangle):  # Violates LSP
+    def set_width(self, width):
+        self.width = width
+        self.height = width  # Changes both dimensions
+    
+    def set_height(self, height):
+        self.width = height
+        self.height = height
+
+# ✅ GOOD: Both conform to same interface without violations
+from abc import ABC, abstractmethod
+
+class Shape(ABC):
+    @abstractmethod
+    def area(self):
+        pass
+
+class Rectangle(Shape):
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+    
+    def area(self):
+        return self.width * self.height
+
+class Square(Shape):
+    def __init__(self, side):
+        self.side = side
+    
+    def area(self):
+        return self.side * self.side
+```
+
+---
+
+## Design Patterns Catalog
+
+### When to Use Which Pattern
+
+| Pattern | Use Case | Example |
+|---------|----------|---------|
+| **Factory** | Object creation logic is complex | Creating different user types (Admin, Customer, Guest) |
+| **Builder** | Object has many optional parameters | Building complex queries or configurations |
+| **Singleton** | Truly global state needed | Logger, configuration manager |
+| **Strategy** | Algorithm varies independently | Payment methods, sorting algorithms |
+| **Observer** | One-to-many event notification | UI updates, event logging |
+| **Repository** | Abstract data access | Database access for domain entities |
+| **Adapter** | Integrate incompatible interfaces | Wrapping third-party APIs |
+| **Decorator** | Add behavior dynamically | Logging, caching, validation |
+| **Command** | Encapsulate requests as objects | Undo/redo, queued operations |
+
+### Anti-Patterns to Avoid
+
+❌ **God Object:** One class does everything  
+✅ **Solution:** Split into smaller, focused classes
+
+❌ **Circular Dependencies:** Module A depends on B, B depends on A  
+✅ **Solution:** Introduce interface/abstraction layer
+
+❌ **Anemic Domain Model:** Domain objects are just data bags  
+✅ **Solution:** Move business logic into domain entities
+
+❌ **Premature Abstraction:** Creating abstractions before you need them  
+✅ **Solution:** Wait for 3 concrete use cases (Rule of Three)
+
+---
+
+## Module Boundary Guidelines
+
+### Defining Clear Interfaces
+```go
+// ❌ BAD: No clear contract
+package user
+
+func GetUser(id string) map[string]interface{} {
+    // Returns unstructured data
+}
+
+// ✅ GOOD: Clear, typed contract
+package user
+
+type User struct {
+    ID    string
+    Email string
+    Name  string
+}
+
+type UserRepository interface {
+    GetByID(ctx context.Context, id string) (*User, error)
+    Save(ctx context.Context, user *User) error
+}
+
+func NewUserRepository(db *sql.DB) UserRepository {
+    return &postgresUserRepository{db: db}
+}
+```
+
+### Enforcing Boundaries with Linting
+```json
+// .eslintrc.json - Enforce import restrictions
+{
+  "rules": {
+    "no-restricted-imports": ["error", {
+      "patterns": [{
+        "group": ["**/infrastructure/**"],
+        "message": "Domain layer cannot import from infrastructure"
+      }]
+    }]
+  }
+}
+```
+
+---
+
+## Dependency Injection Patterns
+
+### Constructor Injection (Preferred)
+```typescript
+// ✅ GOOD: Dependencies explicit and testable
+class UserService {
+  constructor(
+    private userRepository: UserRepository,
+    private emailService: EmailService,
+    private logger: Logger
+  ) {}
+  
+  async registerUser(email: string, name: string): Promise<User> {
+    const user = new User(email, name);
+    await this.userRepository.save(user);
+    await this.emailService.sendWelcome(user);
+    this.logger.info('User registered', { userId: user.id });
+    return user;
+  }
+}
+
+// Easy to test
+const mockRepo = { save: jest.fn() };
+const mockEmail = { sendWelcome: jest.fn() };
+const mockLogger = { info: jest.fn() };
+const service = new UserService(mockRepo, mockEmail, mockLogger);
+```
+
+### Service Locator (Use Sparingly)
+```python
+# ⚠️ ACCEPTABLE: For framework integration, not business logic
+from dependency_injector import containers, providers
+
+class Container(containers.DeclarativeContainer):
+    config = providers.Configuration()
+    
+    database = providers.Singleton(
+        Database,
+        host=config.db.host,
+        port=config.db.port,
+    )
+    
+    user_repository = providers.Factory(
+        UserRepository,
+        db=database,
+    )
+```
+
+---
+
+## Composition Over Inheritance
+
+### Why Prefer Composition?
+- **Flexibility:** Behavior can be changed at runtime
+- **Testability:** Mock individual components easily
+- **Clarity:** Explicit dependencies vs implicit inheritance chain
+- **Safety:** Avoid fragile base class problem
+
+```typescript
+// ❌ BAD: Deep inheritance hierarchy
+class Animal { }
+class Mammal extends Animal { }
+class Dog extends Mammal { }
+class ServiceDog extends Dog { }
+
+// ✅ GOOD: Composition with interfaces
+interface Moveable {
+  move(): void;
+}
+
+interface Audible {
+  makeSound(): void;
+}
+
+class Dog {
+  constructor(
+    private movement: Moveable,
+    private voice: Audible
+  ) {}
+  
+  walk() {
+    this.movement.move();
+  }
+  
+  bark() {
+    this.voice.makeSound();
+  }
+}
+```
+
+---
+
+## Architecture Decision Making
+
+### When to Use Microservices vs Monolith
+
+**Start with Monolith if:**
+- Team size < 10 developers
+- Business domain is not fully understood
+- Shared data model is simple
+- You need to move fast
+
+**Move to Microservices when:**
+- Monolith becomes too large (>100k LOC)
+- Different teams need different deployment cadences
+- Different components have vastly different scaling needs
+- Organizational structure supports distributed teams
+
+### Event-Driven vs Request-Driven Architecture
+
+**Request-Driven (Synchronous) when:**
+- Immediate response required
+- Strong consistency needed
+- Simple CRUD operations
+- Low latency critical
+
+**Event-Driven (Asynchronous) when:**
+- Fire-and-forget operations
+- Eventual consistency acceptable
+- Need to decouple services
+- High throughput required
+
+---
+
+## Measuring Architectural Quality
+
+### Metrics to Track
+- **Coupling:** Number of dependencies between modules (lower is better)
+- **Cohesion:** How focused each module is (higher is better)
+- **Cyclomatic Complexity:** Number of code paths (aim for <10 per function)
+- **Depth of Inheritance:** Max inheritance depth (aim for ≤2)
+- **Afferent Coupling:** Incoming dependencies (indicates stability)
+- **Efferent Coupling:** Outgoing dependencies (indicates flexibility)
+
+### Code Quality Tools
+- **SonarQube:** Code smells, technical debt
+- **CodeClimate:** Maintainability scores
+- **ESLint/TSLint:** Architectural rules
+- **ArchUnit (Java):** Test architectural constraints
+- **Import Linter (Python):** Enforce layering
+
+---
+
+## Documentation Requirements
+
+### Architecture Diagrams (C4 Model)
+1. **Context Diagram:** System and its users/external systems
+2. **Container Diagram:** High-level technology choices
+3. **Component Diagram:** Major components and their interactions
+4. **Code Diagram:** Class diagrams (only for complex areas)
+
+### Architecture Decision Records (ADRs)
+```markdown
+# ADR 001: Use PostgreSQL for Primary Database
+
+## Status
+Accepted
+
+## Context
+We need a relational database for our application that:
+- Supports complex queries with joins
+- Provides ACID guarantees
+- Has good performance for read-heavy workloads
+- Is mature and well-supported
+
+## Decision
+We will use PostgreSQL 15 as our primary database.
+
+## Consequences
+**Positive:**
+- JSON support via JSONB for flexible schemas
+- Excellent query optimizer
+- Rich extension ecosystem (PostGIS, pg_trgm)
+- Strong community and tooling
+
+**Negative:**
+- Requires careful index management at scale
+- Vertical scaling limits (though sufficient for our needs)
+- Replication lag for read replicas
+
+**Risks & Mitigations:**
+- Risk: Database becomes a bottleneck at scale
+- Mitigation: Implement read replicas, caching layer, and monitoring
+```
+
+---
+
+## Common Pitfalls & Solutions
+
+### Pitfall 1: Over-Engineering
+**Symptom:** Too many abstraction layers, complex patterns for simple problems  
+**Solution:** YAGNI (You Aren't Gonna Need It) - Add complexity when needed, not before
+
+### Pitfall 2: Tight Coupling
+**Symptom:** Changing one module breaks many others  
+**Solution:** Depend on interfaces, not implementations
+
+### Pitfall 3: No Clear Boundaries
+**Symptom:** Any module can call any other module  
+**Solution:** Define explicit APIs, enforce with linting
+
+### Pitfall 4: Premature Optimization
+**Symptom:** Complex optimizations before measuring performance  
+**Solution:** Measure first, optimize bottlenecks only
+
+---
+
+## Review Checklist
+
+Before merging architectural changes:
+- [ ] Layers are properly separated (domain, application, adapters)
+- [ ] No cyclic dependencies between modules
+- [ ] Interfaces are stable and well-documented
+- [ ] Dependency injection used correctly
+- [ ] Design patterns are justified and documented
+- [ ] Architecture diagram updated
+- [ ] ADR created for significant decisions
+- [ ] Code complexity metrics are acceptable
+- [ ] Tests cover architectural constraints
+
+---
+
+**Remember:** Good architecture enables change. Bad architecture prevents it. Design for maintainability, not cleverness.

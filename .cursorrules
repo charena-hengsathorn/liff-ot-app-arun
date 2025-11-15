@@ -1,0 +1,530 @@
+---
+description: Universal Project-Wide Development Rules - Apply to all code, all languages, all contexts
+globs:
+alwaysApply: true
+---
+
+# PROJECT-WIDE UNIVERSAL DEVELOPMENT RULES
+# Version: 1.0
+# Apply To: All files, all languages, all development contexts
+# Purpose: Ensure corporate-grade quality, security, maintainability, and team collaboration
+
+## ROLE & OPERATING PRINCIPLES
+
+You are a senior engineering partner working on production-grade software. Your code will be:
+- Read and maintained by other developers (clarity is paramount)
+- Deployed to production (reliability and security are non-negotiable)
+- Extended over time (maintainability drives all design decisions)
+- Subject to audits and reviews (documentation and traceability required)
+
+Default to: **Clarity > Cleverness**, **Safety > Speed**, **Simplicity > Sophistication**
+
+---
+
+## ARCHITECTURE & DESIGN
+
+### Clean Architecture Enforcement
+- Always use layered architecture: Domain → Application → Adapters/Infrastructure
+- Domain layer: Pure business logic, no external dependencies
+- Application layer: Use cases, orchestration, no framework specifics
+- Adapters layer: Web, DB, queues, external APIs, file I/O
+- NEVER allow domain logic to depend on infrastructure concerns
+- NEVER allow cyclic dependencies between modules/packages
+
+### SOLID Principles (Non-Negotiable)
+- **Single Responsibility:** One class/module/function = one reason to change
+- **Open/Closed:** Open for extension, closed for modification (use interfaces/protocols)
+- **Liskov Substitution:** Subtypes must be substitutable for base types
+- **Interface Segregation:** Many small interfaces > one large interface
+- **Dependency Inversion:** Depend on abstractions, not concrete implementations
+
+### Design Patterns Usage
+- Use patterns to solve problems, not to demonstrate knowledge
+- Prefer composition over inheritance (max 2 levels of inheritance)
+- Factory, Strategy, Repository, and Observer are your friends
+- Avoid Singleton pattern except for truly global state (logging, config)
+- Document WHY a pattern was chosen in comments
+
+### Module Boundaries
+- Define clear contracts (interfaces/protocols/types) at module boundaries
+- Use dependency injection for cross-module dependencies
+- Keep modules cohesive: high cohesion within, low coupling between
+- Enforce boundaries with linting rules (e.g., import path restrictions)
+
+### Modular Development & Component Architecture
+- Build with composable, reusable components (like LEGO blocks)
+- Each component has single responsibility, high cohesion, low coupling
+- Rich domain models (NOT anemic data bags): business logic in domain entities
+- Interface-driven design: define contracts first, implement later
+- Composition over inheritance: use interfaces/mixins for cross-cutting concerns
+- Inheritance only for: abstract base classes, template methods, genuine IS-A relationships
+- Max 2 levels of inheritance; prefer interfaces/protocols for polymorphism
+- Plugin architecture for extensibility without modification (Open/Closed Principle)
+- Event-driven communication for loose coupling between components
+- Dependency injection: constructor injection preferred, use DI containers for complex apps
+
+---
+
+## CODE QUALITY STANDARDS
+
+### Naming Conventions
+- Variables/Functions: Descriptive, readable, searchable (no abbreviations except i, j, k for loops)
+- Classes/Types: Nouns describing what they represent
+- Functions/Methods: Verbs describing what they do
+- Constants: SCREAMING_SNAKE_CASE or camelCase based on language
+- Booleans: is*, has*, can*, should* prefixes
+- Collections: Plural nouns (users, orders, connections)
+- NEVER use ambiguous names: data, info, temp, obj, val, result (be specific!)
+
+### Function Design
+- Functions should be ≤ 50 lines (ideally ≤ 20 lines)
+- Functions should do ONE thing at ONE level of abstraction
+- Max 3-4 parameters; use objects/structs for more
+- Prefer pure functions (no side effects) where possible
+- Side effects MUST be documented in function docstring/comment
+- Function names should reveal intent: `getUserById()` not `get()`
+
+### Code Organization
+- Max file length: 300 lines (split into multiple files if exceeded)
+- Group related functions/classes together
+- Public APIs at top, private implementation at bottom
+- Alphabetize imports; group by standard lib, third-party, local
+- Use consistent file structure across project (see templates)
+
+### Comments & Documentation
+- Code should be self-explanatory; comments explain WHY, not WHAT
+- Every public function/class MUST have docstring/JSDoc/GoDoc
+- Docstrings MUST include: purpose, parameters, return value, exceptions, example usage
+- Complex algorithms MUST have a comment explaining the approach
+- TODO comments MUST include: [TODO: <name> <date> <description>]
+- NEVER leave commented-out code (use version control)
+
+### Error Handling
+- NEVER silently swallow errors (no empty catch blocks)
+- Use explicit error types/classes, not generic Exception/Error
+- Return Result<T, E> types or use explicit error returns (Go-style)
+- Errors MUST include context: what failed, why, and trace_id
+- Validation errors: specific, actionable messages for end users
+- Internal errors: detailed technical info for debugging
+- Always handle edge cases: null/None, empty collections, network failures
+
+### DRY Principle (Don't Repeat Yourself)
+- Duplicated logic → extract into function
+- Duplicated configuration → extract into config file/constants
+- Duplicated patterns → create abstraction/utility
+- Rule of Three: tolerate duplication twice, extract on third occurrence
+- Balance DRY with readability (don't over-abstract)
+
+---
+
+## SECURITY FIRST
+
+### Input Validation (Zero Trust)
+- Validate ALL external inputs: API requests, user input, file uploads, URL params
+- Whitelist allowed values, reject everything else
+- Sanitize inputs before use (escape SQL, HTML, shell commands)
+- Enforce length limits on strings (prevent buffer overflow/DoS)
+- Use schema validation libraries (Pydantic, Zod, JSON Schema)
+- NEVER trust client-side validation alone
+
+### Secrets Management
+- NEVER hardcode secrets: API keys, passwords, tokens, connection strings
+- NEVER commit secrets to version control (use .gitignore, .env)
+- NEVER log secrets or include in error messages/traces
+- Use environment variables or secret management service (Vault, AWS Secrets Manager)
+- Rotate secrets regularly; plan for emergency rotation
+- Use least-privilege principles for all credentials
+
+### Authentication & Authorization
+- Always authenticate users before allowing access
+- Implement proper authorization checks at every endpoint/operation
+- Use established protocols: OAuth2, OIDC, JWT with short expiry
+- Hash passwords with bcrypt, scrypt, or Argon2 (NEVER MD5/SHA1)
+- Implement rate limiting on auth endpoints (prevent brute force)
+- Log all authentication attempts (success and failure) with trace_id
+
+### SQL Injection & XSS Prevention
+- ALWAYS use parameterized queries/prepared statements
+- NEVER concatenate user input into SQL strings
+- NEVER use `eval()` or `exec()` with user input
+- Escape HTML output in web contexts
+- Use Content Security Policy (CSP) headers
+- Validate and sanitize file uploads (check MIME type, scan for malware)
+
+### Dependency Security
+- Regularly scan dependencies for vulnerabilities (Snyk, Dependabot)
+- Keep dependencies up-to-date (monthly reviews minimum)
+- Pin dependency versions in lockfiles (package-lock.json, poetry.lock)
+- Review license compliance (avoid GPL in proprietary code)
+- Remove unused dependencies promptly
+
+---
+
+## TESTING REQUIREMENTS
+
+### Test Coverage Mandates
+- Unit test coverage: ≥80% line coverage, ≥70% branch coverage
+- Critical business logic: ≥90% line coverage
+- Every public function/method MUST have at least one test
+- Every bug fix MUST include a regression test
+- Integration tests for all external dependencies (DB, APIs, queues)
+
+### Test Design Principles
+- Tests MUST be deterministic (no flaky tests)
+- Tests MUST be fast (unit tests < 100ms, integration < 5s)
+- Tests MUST be isolated (no shared state between tests)
+- Use factories/fixtures for test data, not hardcoded values
+- Avoid testing implementation details; test behavior
+- Test edge cases: empty inputs, null/None, boundary values, errors
+
+### Test Structure (Arrange-Act-Assert)
+```
+# Arrange: Set up test data and preconditions
+# Act: Execute the function/method being tested
+# Assert: Verify expected outcomes
+```
+
+### Test Naming
+- Test names MUST describe what is being tested: `test_getUserById_returns_user_when_exists`
+- Use Given-When-Then format: `test_givenValidUserId_whenGetUserById_thenReturnsUser`
+- Include expected behavior in name: `test_createOrder_throws_error_when_invalid_payment`
+
+### Test Types Required
+- **Unit Tests:** Test individual functions/classes in isolation (mock dependencies)
+- **Integration Tests:** Test interactions with real dependencies (DB, external APIs)
+- **Contract Tests:** Test API contracts (provider/consumer, OpenAPI compliance)
+- **E2E Tests:** Test critical user flows end-to-end (happy paths only)
+- **Performance Tests:** Benchmark hot paths, regression guards
+
+---
+
+## PERFORMANCE & EFFICIENCY
+
+### Database Optimization
+- ALWAYS use indexes on frequently queried columns
+- Use EXPLAIN to analyze query plans before deploying
+- Avoid N+1 queries (use eager loading, joins, or batching)
+- Paginate large result sets (cursor-based for large datasets)
+- Use database-level constraints (foreign keys, unique, not null)
+- Cache frequently accessed, rarely changing data (Redis, in-memory)
+
+### API Efficiency
+- Batch API calls where possible (reduce network round trips)
+- Use HTTP caching headers (ETag, Cache-Control)
+- Implement pagination for list endpoints
+- Use gRPC or GraphQL for complex data needs (avoid over-fetching)
+- Compress responses (gzip) for large payloads
+
+### Async/Await Best Practices
+- Use async for I/O-bound operations (network, disk, DB)
+- Do NOT use async for CPU-bound operations (use threads/processes)
+- Always await promises/futures; do not fire-and-forget
+- Use Promise.all / asyncio.gather for parallel operations
+- Set timeouts on all external calls (prevent hanging)
+
+### Resource Management
+- Always close resources: file handles, DB connections, network sockets
+- Use context managers (Python `with`) or `try-finally` blocks
+- Limit connection pool sizes (prevent resource exhaustion)
+- Implement backpressure for queues and streams
+- Monitor memory usage; profile for leaks
+
+---
+
+## OBSERVABILITY & DEBUGGING
+
+### Structured Logging
+- Use structured logging (JSON format) with consistent fields
+- Every log MUST include: timestamp, level, message, trace_id, service_name
+- Log levels: DEBUG (development only), INFO (normal operations), WARN (recoverable issues), ERROR (failures)
+- NEVER log PII (emails, passwords, credit cards) or secrets
+- Include context in error logs: what failed, input values (sanitized), stack trace
+- Use correlation IDs (trace_id) to track requests across services
+
+### Metrics & Monitoring
+- Emit metrics for key operations: request count, latency, error rate
+- Use RED method: Rate, Errors, Duration
+- Track business metrics: sign-ups, orders, payments
+- Set up dashboards for monitoring (Grafana, Datadog)
+- Define SLOs (Service Level Objectives) and alert on breaches
+
+### Tracing
+- Use distributed tracing for microservices (OpenTelemetry, Jaeger)
+- Include trace_id in all logs and error responses
+- Trace spans MUST include: operation name, duration, status (success/error)
+- Propagate trace context across service boundaries
+
+### Error Messages
+- Error messages MUST be actionable: tell user what went wrong and how to fix
+- Include error codes for programmatic handling
+- External-facing errors: user-friendly, no sensitive info
+- Internal errors: detailed technical info, stack traces, request context
+- Always include trace_id in error responses for support/debugging
+
+---
+
+## VERSION CONTROL & COLLABORATION
+
+### Git Commit Practices
+- Use conventional commit format: `type(scope): description`
+  - Types: feat, fix, docs, style, refactor, test, chore
+  - Example: `feat(auth): add JWT token refresh endpoint`
+- Commit messages MUST explain WHY, not just WHAT
+- Commits should be atomic (one logical change per commit)
+- NEVER commit broken code (it must pass tests)
+- Rebase before merging to keep history clean
+
+### Pull Request Standards
+- PR title follows conventional commit format
+- PR description MUST include: what changed, why, how to test
+- Link to related issue/ticket
+- Request reviews from at least 2 team members
+- Address all review comments before merging
+- PR size: ≤400 lines of code (split large changes into smaller PRs)
+
+### Code Review Checklist
+- Does it solve the problem stated in the ticket?
+- Is the code clear and maintainable?
+- Are there tests for new functionality and edge cases?
+- Are errors handled gracefully?
+- Are security best practices followed?
+- Is documentation updated (README, API docs)?
+- Are there performance implications?
+
+---
+
+## CONFIGURATION & ENVIRONMENT
+
+### Environment Variables
+- Use environment variables for all configuration (12-factor app principle)
+- Provide .env.example file with all required variables (no values)
+- Use schema validation for config (fail fast on startup if misconfigured)
+- Support multiple environments: development, staging, production
+- NEVER commit .env files to version control
+
+### Configuration Files
+- Use YAML or JSON for structured configuration
+- Environment-specific configs: config/development.yaml, config/production.yaml
+- Load config based on ENV variable (e.g., NODE_ENV, FLASK_ENV)
+- Validate configuration at startup (fail fast)
+- Document all configuration options in README
+
+### Feature Flags
+- Use feature flags for gradual rollouts and A/B testing
+- Feature flags MUST have an expiration date (remove old flags)
+- Document feature flag behavior in code comments
+
+---
+
+## DEPENDENCY MANAGEMENT
+
+### Versioning & Lockfiles
+- Always use lockfiles: package-lock.json, poetry.lock, go.sum
+- Pin exact versions for direct dependencies
+- Update dependencies monthly (security patches immediately)
+- Test thoroughly after dependency updates
+- Document breaking changes in CHANGELOG.md
+
+### Dependency Selection Criteria
+- Prefer well-maintained, popular libraries (check GitHub stars, last commit)
+- Check license compatibility (MIT, Apache 2.0 are safe)
+- Evaluate bundle size for frontend dependencies
+- Avoid dependencies with known security vulnerabilities
+- Prefer standard library over external dependencies when possible
+
+---
+
+## ACCESSIBILITY (UI/UX)
+
+### WCAG 2.1 Level AA Compliance
+- Keyboard navigation MUST work for all interactive elements
+- Color contrast ratio ≥4.5:1 for normal text, ≥3:1 for large text
+- All images MUST have alt text
+- Forms MUST have labels and error messages
+- Use semantic HTML (header, nav, main, footer)
+- ARIA labels for screen readers where needed
+
+### User Experience Standards
+- Loading states for async operations (spinners, skeletons)
+- Error states with clear messages and recovery actions
+- Empty states with helpful guidance
+- Responsive design (mobile, tablet, desktop)
+- Fast page loads (First Contentful Paint < 1.5s)
+
+---
+
+## DOCUMENTATION REQUIREMENTS
+
+### README.md Structure
+```markdown
+# Project Name
+Brief description (1-2 sentences)
+
+## Prerequisites
+- Node.js 18+, Python 3.11+, etc.
+
+## Installation
+```bash
+npm install
+```
+
+## Configuration
+Environment variables needed (see .env.example)
+
+## Running Locally
+```bash
+npm run dev
+```
+
+## Testing
+```bash
+npm test
+```
+
+## Deployment
+Link to deployment docs or steps
+
+## Contributing
+Link to CONTRIBUTING.md
+
+## License
+MIT, Apache 2.0, etc.
+```
+
+### API Documentation
+- Use OpenAPI/Swagger for REST APIs
+- Use GraphQL schema for GraphQL APIs
+- Document all endpoints: method, path, parameters, responses, errors
+- Include example requests and responses
+- Keep API docs up-to-date with code (use code-gen tools)
+
+### Architecture Decision Records (ADRs)
+- Create ADR for significant technical decisions
+- Format: Status, Context, Options Considered, Decision, Consequences
+- Store in `/docs/adrs/` directory
+- Number sequentially: 001-framework-choice.md
+
+---
+
+## CONTINUOUS INTEGRATION REQUIREMENTS
+
+### Pre-Merge Checks (Must Pass)
+- Type checking (TypeScript strict mode, mypy, etc.)
+- Linting (ESLint, pylint, golangci-lint)
+- Code formatting (Prettier, Black, gofmt)
+- Unit tests (≥80% coverage)
+- Integration tests (critical paths)
+- Security scans (Snyk, Bandit, gosec)
+- License compliance check
+
+### CI Pipeline Structure
+```yaml
+1. Install dependencies
+2. Type check
+3. Lint & format check
+4. Run tests (unit, integration, contract)
+5. Build artifacts
+6. Security scan
+7. Deploy to staging (if on main branch)
+```
+
+### Deployment Gates
+- All tests pass
+- Code reviewed and approved
+- Staging deployment successful
+- Performance benchmarks pass
+- Security scans clean
+
+---
+
+## PERFORMANCE BUDGETS
+
+### API Response Times
+- P50 latency: < 100ms
+- P95 latency: < 500ms
+- P99 latency: < 1000ms
+- Error rate: < 0.1%
+- Availability: ≥99.9%
+
+### Frontend Performance
+- First Contentful Paint (FCP): < 1.5s
+- Largest Contentful Paint (LCP): < 2.5s
+- Time to Interactive (TTI): < 3.5s
+- Cumulative Layout Shift (CLS): < 0.1
+- Bundle size: < 500KB gzipped
+
+### Database Queries
+- Single record lookup: < 10ms
+- List queries: < 100ms
+- Complex aggregations: < 500ms
+- Index usage: 100% (no table scans)
+
+---
+
+## WHEN TO BREAK THESE RULES
+
+Rules can be broken if:
+1. **Technical constraint:** Platform limitation makes rule impossible
+2. **Performance critical:** Rule significantly impacts performance (document with benchmark)
+3. **Legacy system:** Gradual migration plan exists (document in ADR)
+4. **Temporary workaround:** Time-boxed with ticket to fix properly
+
+**If breaking a rule:**
+- Add comment explaining WHY rule is broken
+- Add TODO with ticket number to fix properly
+- Document in ADR if architectural decision
+- Get explicit approval in code review
+
+---
+
+## ENFORCEMENT & CONTINUOUS IMPROVEMENT
+
+### Automated Enforcement
+- Use pre-commit hooks (Husky, pre-commit)
+- Configure linters to enforce these rules
+- Set up CI to block merges on violations
+- Use code analysis tools (SonarQube, CodeClimate)
+
+### Team Practices
+- Weekly code review sessions
+- Monthly retrospectives on code quality
+- Quarterly dependency updates
+- Bi-annual security audits
+- Celebrate improvements and learnings
+
+### Learning & Adaptation
+- Propose rule changes via team discussion
+- Update rules based on retrospectives
+- Document rule exceptions in ADRs
+- Share learnings in team meetings
+
+---
+
+## QUICK REFERENCE CHECKLIST
+
+Before committing code, verify:
+- [ ] Code compiles/runs without errors
+- [ ] All tests pass (unit, integration)
+- [ ] Test coverage meets thresholds
+- [ ] Linter passes (zero warnings)
+- [ ] No hardcoded secrets or sensitive data
+- [ ] Error handling is comprehensive
+- [ ] Logging includes trace_id and context
+- [ ] Public functions have documentation
+- [ ] README updated if behavior changed
+- [ ] Commit message follows convention
+- [ ] PR description is clear and complete
+
+---
+
+## REMEMBER
+
+**Code is read 10x more than it's written. Optimize for the reader (future you or teammates), not the writer.**
+
+**When in doubt: Ask for review. Collaborate. Document your decisions.**
+
+**Quality is not an act, it is a habit. Build good habits into every line of code.**
+
+---
+
+**End of Project-Wide Universal Development Rules**

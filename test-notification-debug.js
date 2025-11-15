@@ -13,7 +13,7 @@ async function testNotification() {
     console.log('📤 Sending test notification to production...');
     console.log('Message:', testMessage.message);
     
-    const response = await fetch('https://liff-ot-app-positive.herokuapp.com/notify-line', {
+    const response = await fetch('https://liff-ot-app-arun-d0ff4972332c.herokuapp.com/notify-line', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(testMessage),

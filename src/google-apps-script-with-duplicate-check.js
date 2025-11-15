@@ -573,7 +573,7 @@ function notifyProdServerForRow() {
   Logger.log("Payload: " + JSON.stringify(payload));
   Logger.log("Message: " + message);
 
-  var url = "https://liff-ot-app-positive.herokuapp.com/notify-line";
+  var url = "https://liff-ot-app-arun-d0ff4972332c.herokuapp.com/notify-line";
   var options = {
     "method": "post",
     "contentType": "application/json",

@@ -1,0 +1,818 @@
+---
+description: Writing/reviewing tests
+alwaysApply: false
+---
+## Unit Testing
+
+### Unit Test Characteristics
+- **Fast:** < 100ms per test
+- **Isolated:** No external dependencies (DB, network, filesystem)
+- **Deterministic:** Same input → same output, always
+- **Independent:** Tests can run in any order
+- **Readable:** Test name explains what is being tested
+
+### Test Structure (AAA Pattern)
+```python
+def test_create_user_with_valid_data_returns_user():
+    # Arrange: Set up test data and preconditions
+    email = "test@example.com"
+    name = "Test User"
+    
+    # Act: Execute the function being tested
+    user = create_user(email=email, name=name)
+    
+    # Assert: Verify expected outcomes
+    assert user.email == email
+    assert user.name == name
+    assert user.id is not None
+    assert user.created_at is not None
+```
+
+```javascript
+describe('UserService', () => {
+  describe('createUser', () => {
+    it('should create user with valid data', () => {
+      // Arrange
+      const email = 'test@example.com';
+      const name = 'Test User';
+      
+      // Act
+      const user = userService.createUser({ email, name });
+      
+      // Assert
+      expect(user.email).toBe(email);
+      expect(user.name).toBe(name);
+      expect(user.id).toBeDefined();
+      expect(user.createdAt).toBeInstanceOf(Date);
+    });
+  });
+});
+```
+
+### Test Naming Conventions
+
+**Pattern:** `test_<functionName>_<scenario>_<expectedBehavior>`
+
+```python
+# ✅ GOOD: Descriptive test names
+def test_divide_by_zero_raises_division_error():
+    pass
+
+def test_create_user_with_duplicate_email_raises_validation_error():
+    pass
+
+def test_calculate_discount_for_premium_user_returns_twenty_percent():
+    pass
+
+# ❌ BAD: Vague test names
+def test_divide():
+    pass
+
+def test_user_creation():
+    pass
+
+def test_discount():
+    pass
+```
+
+### Testing Edge Cases
+
+```python
+def test_string_utils_edge_cases():
+    """Test edge cases for string utilities"""
+    
+    # Empty input
+    assert normalize_string("") == ""
+    
+    # None input
+    assert normalize_string(None) == ""
+    
+    # Whitespace only
+    assert normalize_string("   ") == ""
+    
+    # Special characters
+    assert normalize_string("hello@#$%world") == "helloworld"
+    
+    # Unicode
+    assert normalize_string("café") == "cafe"
+    
+    # Very long string
+    long_string = "a" * 10000
+    result = normalize_string(long_string)
+    assert len(result) <= 1000  # Assuming max length
+```
+
+### Mocking Dependencies
+
+```python
+# pytest with unittest.mock
+from unittest.mock import Mock, patch
+import pytest
+
+def test_send_welcome_email_calls_email_service(mocker):
+    # Arrange
+    email_service = mocker.Mock()
+    user = User(email="test@example.com", name="Test")
+    
+    # Act
+    send_welcome_email(user, email_service)
+    
+    # Assert
+    email_service.send.assert_called_once_with(
+        to=user.email,
+        subject="Welcome!",
+        template="welcome"
+    )
+
+# Mock external API calls
+@patch('requests.get')
+def test_fetch_user_data_from_api(mock_get):
+    # Arrange
+    mock_response = Mock()
+    mock_response.json.return_value = {'id': 1, 'name': 'Test'}
+    mock_response.status_code = 200
+    mock_get.return_value = mock_response
+    
+    # Act
+    user_data = fetch_user_data(user_id=1)
+    
+    # Assert
+    assert user_data['name'] == 'Test'
+    mock_get.assert_called_once_with('https://api.example.com/users/1')
+```
+
+```javascript
+// Jest mocking
+import { sendWelcomeEmail } from './email';
+import { EmailService } from './services/email';
+
+jest.mock('./services/email');
+
+describe('sendWelcomeEmail', () => {
+  it('should call email service with correct parameters', async () => {
+    // Arrange
+    const mockSend = jest.fn().mockResolvedValue({ success: true });
+    EmailService.mockImplementation(() => ({
+      send: mockSend,
+    }));
+    
+    const user = { email: 'test@example.com', name: 'Test' };
+    
+    // Act
+    await sendWelcomeEmail(user);
+    
+    // Assert
+    expect(mockSend).toHaveBeenCalledWith({
+      to: user.email,
+      subject: 'Welcome!',
+      template: 'welcome',
+    });
+  });
+});
+```
+
+### Parameterized Tests
+
+```python
+# pytest parameterized tests
+import pytest
+
+@pytest.mark.parametrize("input,expected", [
+    (0, 0),
+    (1, 1),
+    (2, 4),
+    (3, 9),
+    (10, 100),
+    (-5, 25),
+])
+def test_square_function(input, expected):
+    assert square(input) == expected
+
+@pytest.mark.parametrize("email,is_valid", [
+    ("test@example.com", True),
+    ("user+tag@domain.co.uk", True),
+    ("invalid-email", False),
+    ("@example.com", False),
+    ("user@", False),
+    ("", False),
+])
+def test_email_validation(email, is_valid):
+    assert is_valid_email(email) == is_valid
+```
+
+```javascript
+// Jest parameterized tests
+describe('square function', () => {
+  test.each([
+    [0, 0],
+    [1, 1],
+    [2, 4],
+    [3, 9],
+    [10, 100],
+    [-5, 25],
+  ])('square(%i) should return %i', (input, expected) => {
+    expect(square(input)).toBe(expected);
+  });
+});
+```
+
+---
+
+## Integration Testing
+
+### Integration Test Characteristics
+- **Test boundaries:** Verify interactions between components
+- **Use real dependencies:** Database, filesystem, message queues (in test mode)
+- **Ephemeral resources:** Spin up and tear down test databases/containers
+- **Slower than unit tests:** < 5s per test is acceptable
+- **Fewer tests:** Focus on critical integration points
+
+### Database Integration Tests
+
+```python
+# pytest with test database
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+@pytest.fixture(scope="function")
+def db_session():
+    """Create a test database for each test"""
+    engine = create_engine("postgresql://test:test@localhost/test_db")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    
+    yield session
+    
+    session.close()
+    Base.metadata.drop_all(engine)
+
+def test_create_and_retrieve_user(db_session):
+    # Arrange
+    user = User(email="test@example.com", name="Test User")
+    
+    # Act
+    db_session.add(user)
+    db_session.commit()
+    
+    retrieved_user = db_session.query(User).filter_by(email="test@example.com").first()
+    
+    # Assert
+    assert retrieved_user is not None
+    assert retrieved_user.email == "test@example.com"
+    assert retrieved_user.name == "Test User"
+```
+
+### API Integration Tests
+
+```javascript
+// Supertest for Express API testing
+import request from 'supertest';
+import app from '../src/app';
+
+describe('User API', () => {
+  describe('POST /api/users', () => {
+    it('should create a new user', async () => {
+      const userData = {
+        email: 'test@example.com',
+        name: 'Test User',
+      };
+      
+      const response = await request(app)
+        .post('/api/users')
+        .send(userData)
+        .expect(201);
+      
+      expect(response.body).toMatchObject({
+        email: userData.email,
+        name: userData.name,
+      });
+      expect(response.body.id).toBeDefined();
+    });
+    
+    it('should return 400 for invalid email', async () => {
+      const userData = {
+        email: 'invalid-email',
+        name: 'Test User',
+      };
+      
+      const response = await request(app)
+        .post('/api/users')
+        .send(userData)
+        .expect(400);
+      
+      expect(response.body.error).toContain('Invalid email');
+    });
+  });
+});
+```
+
+### Test Containers (Docker-based testing)
+
+```python
+# testcontainers-python
+from testcontainers.postgres import PostgresContainer
+import pytest
+
+@pytest.fixture(scope="session")
+def postgres_container():
+    """Start PostgreSQL container for tests"""
+    with PostgresContainer("postgres:15") as postgres:
+        yield postgres
+
+@pytest.fixture(scope="function")
+def db_connection(postgres_container):
+    """Create database connection for each test"""
+    engine = create_engine(postgres_container.get_connection_url())
+    Base.metadata.create_all(engine)
+    connection = engine.connect()
+    
+    yield connection
+    
+    connection.close()
+    Base.metadata.drop_all(engine)
+```
+
+---
+
+## Contract Testing
+
+### API Contract Tests (Provider Side)
+
+```python
+# Pact provider verification
+from pact import Verifier
+
+def test_provider_honors_pact():
+    verifier = Verifier(
+        provider='UserService',
+        provider_base_url='http://localhost:8000',
+    )
+    
+    output, logs = verifier.verify_pacts(
+        './pacts/consumer-userservice.json'
+    )
+    
+    assert output == 0, "Pact verification failed"
+```
+
+### API Contract Tests (Consumer Side)
+
+```javascript
+// Pact consumer test
+import { Pact } from '@pact-foundation/pact';
+
+describe('User Service Consumer', () => {
+  const provider = new Pact({
+    consumer: 'WebApp',
+    provider: 'UserService',
+  });
+  
+  beforeAll(() => provider.setup());
+  afterAll(() => provider.finalize());
+  
+  describe('GET /users/:id', () => {
+    beforeAll(() => {
+      return provider.addInteraction({
+        state: 'user with id 1 exists',
+        uponReceiving: 'a request for user 1',
+        withRequest: {
+          method: 'GET',
+          path: '/users/1',
+        },
+        willRespondWith: {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            id: 1,
+            email: 'test@example.com',
+            name: 'Test User',
+          },
+        },
+      });
+    });
+    
+    it('returns the user', async () => {
+      const response = await fetch('http://localhost:1234/users/1');
+      const user = await response.json();
+      
+      expect(user.id).toBe(1);
+      expect(user.email).toBe('test@example.com');
+    });
+  });
+});
+```
+
+---
+
+## End-to-End (E2E) Testing
+
+### E2E Test Characteristics
+- **Test user flows:** Complete user journeys, not individual features
+- **Use real environment:** Staging or production-like setup
+- **Slow:** Minutes per test suite is acceptable
+- **Fewest tests:** 10-20 critical user flows only
+- **Flake-resistant:** Add waits, retries, and robust selectors
+
+### Playwright E2E Tests
+
+```javascript
+// Playwright test
+import { test, expect } from '@playwright/test';
+
+test.describe('User Registration Flow', () => {
+  test('should allow user to register and login', async ({ page }) => {
+    // Navigate to registration page
+    await page.goto('https://example.com/register');
+    
+    // Fill registration form
+    await page.fill('[data-testid="email-input"]', 'test@example.com');
+    await page.fill('[data-testid="password-input"]', 'SecurePassword123!');
+    await page.fill('[data-testid="name-input"]', 'Test User');
+    
+    // Submit form
+    await page.click('[data-testid="submit-button"]');
+    
+    // Wait for redirect
+    await page.waitForURL('**/dashboard');
+    
+    // Verify user is logged in
+    await expect(page.locator('[data-testid="user-name"]')).toHaveText('Test User');
+    
+    // Verify welcome message
+    await expect(page.locator('[data-testid="welcome-message"]')).toBeVisible();
+  });
+  
+  test('should show error for duplicate email', async ({ page }) => {
+    await page.goto('https://example.com/register');
+    
+    // Try to register with existing email
+    await page.fill('[data-testid="email-input"]', 'existing@example.com');
+    await page.fill('[data-testid="password-input"]', 'Password123!');
+    await page.click('[data-testid="submit-button"]');
+    
+    // Verify error message
+    await expect(page.locator('[data-testid="error-message"]'))
+      .toHaveText('Email already registered');
+  });
+});
+```
+
+### Best Practices for E2E Tests
+
+```javascript
+// ✅ GOOD: Use data-testid attributes for selectors
+<button data-testid="submit-button">Submit</button>
+
+// Playwright
+await page.click('[data-testid="submit-button"]');
+
+// ❌ BAD: Fragile selectors
+await page.click('.btn.btn-primary.submit-btn');  // Breaks with CSS changes
+await page.click('button:nth-child(2)');  // Breaks with DOM changes
+
+// ✅ GOOD: Wait for elements and network requests
+await page.waitForSelector('[data-testid="user-list"]');
+await page.waitForResponse(response => 
+  response.url().includes('/api/users') && response.status() === 200
+);
+
+// ✅ GOOD: Use page objects for reusable actions
+class LoginPage {
+  constructor(page) {
+    this.page = page;
+  }
+  
+  async login(email, password) {
+    await this.page.fill('[data-testid="email-input"]', email);
+    await this.page.fill('[data-testid="password-input"]', password);
+    await this.page.click('[data-testid="login-button"]');
+    await this.page.waitForURL('**/dashboard');
+  }
+}
+
+// Usage
+const loginPage = new LoginPage(page);
+await loginPage.login('test@example.com', 'password');
+```
+
+---
+
+## Performance Testing
+
+### Load Testing
+
+```python
+# Locust load test
+from locust import HttpUser, task, between
+
+class UserBehavior(HttpUser):
+    wait_time = between(1, 3)  # Wait 1-3 seconds between tasks
+    
+    @task(3)  # Weight: runs 3x more often than other tasks
+    def get_users(self):
+        self.client.get("/api/users")
+    
+    @task(1)
+    def create_user(self):
+        self.client.post("/api/users", json={
+            "email": "test@example.com",
+            "name": "Test User"
+        })
+    
+    def on_start(self):
+        """Called when user starts"""
+        self.client.post("/api/auth/login", json={
+            "email": "test@example.com",
+            "password": "password"
+        })
+
+# Run: locust -f load_test.py --host=https://api.example.com
+```
+
+### Benchmark Tests
+
+```python
+# pytest-benchmark
+import pytest
+
+def test_expensive_function_performance(benchmark):
+    result = benchmark(expensive_function, arg1, arg2)
+    
+    # Assert performance targets
+    assert benchmark.stats.mean < 0.1  # Mean execution time < 100ms
+    assert benchmark.stats.max < 0.5   # Max execution time < 500ms
+```
+
+```javascript
+// Benchmark.js
+import Benchmark from 'benchmark';
+
+const suite = new Benchmark.Suite();
+
+suite
+  .add('Array#map', () => {
+    [1, 2, 3, 4, 5].map(x => x * 2);
+  })
+  .add('for loop', () => {
+    const arr = [1, 2, 3, 4, 5];
+    const result = [];
+    for (let i = 0; i < arr.length; i++) {
+      result.push(arr[i] * 2);
+    }
+  })
+  .on('cycle', event => {
+    console.log(String(event.target));
+  })
+  .on('complete', function() {
+    console.log('Fastest is ' + this.filter('fastest').map('name'));
+  })
+  .run();
+```
+
+---
+
+## Test Data Management
+
+### Factories
+
+```python
+# Factory Boy (Python)
+import factory
+from models import User, Order
+
+class UserFactory(factory.Factory):
+    class Meta:
+        model = User
+    
+    email = factory.Sequence(lambda n: f'user{n}@example.com')
+    name = factory.Faker('name')
+    created_at = factory.Faker('date_time_this_year')
+
+class OrderFactory(factory.Factory):
+    class Meta:
+        model = Order
+    
+    user = factory.SubFactory(UserFactory)
+    total = factory.Faker('pydecimal', left_digits=3, right_digits=2, positive=True)
+    status = factory.Iterator(['pending', 'paid', 'shipped'])
+
+# Usage
+user = UserFactory()
+order = OrderFactory(user=user, total=99.99)
+```
+
+```javascript
+// Fishery (TypeScript/JavaScript)
+import { Factory } from 'fishery';
+
+const UserFactory = Factory.define<User>(({ sequence }) => ({
+  id: sequence,
+  email: `user${sequence}@example.com`,
+  name: 'Test User',
+  createdAt: new Date(),
+}));
+
+const OrderFactory = Factory.define<Order>(({ sequence, associations }) => ({
+  id: sequence,
+  user: associations.user || UserFactory.build(),
+  total: 99.99,
+  status: 'pending',
+}));
+
+// Usage
+const user = UserFactory.build();
+const order = OrderFactory.build({ user, total: 150.00 });
+```
+
+### Fixtures
+
+```python
+# pytest fixtures
+@pytest.fixture
+def sample_user():
+    return User(email="test@example.com", name="Test User")
+
+@pytest.fixture
+def sample_order(sample_user):
+    return Order(user=sample_user, total=99.99)
+
+def test_order_total(sample_order):
+    assert sample_order.total == 99.99
+```
+
+---
+
+## Test Coverage
+
+### Coverage Targets
+- **Overall:** ≥80% line coverage, ≥70% branch coverage
+- **Critical business logic:** ≥90% line coverage
+- **New code:** ≥85% line coverage (enforce in CI)
+- **UI components:** ≥70% coverage (focus on logic, not rendering)
+
+### Running Coverage
+
+```bash
+# Python (pytest-cov)
+pytest --cov=src --cov-report=html --cov-report=term
+
+# JavaScript (Jest)
+npm test -- --coverage
+
+# Go
+go test -cover ./...
+
+# View HTML report
+open htmlcov/index.html  # Python
+open coverage/lcov-report/index.html  # JavaScript
+```
+
+### Coverage Configuration
+
+```json
+// .coveragerc (Python)
+[run]
+source = src
+omit = 
+    */tests/*
+    */migrations/*
+    */venv/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+```
+
+```json
+// jest.config.js (JavaScript)
+module.exports = {
+  collectCoverageFrom: [
+    'src/**/*.{js,ts}',
+    '!src/**/*.test.{js,ts}',
+    '!src/**/*.spec.{js,ts}',
+  ],
+  coverageThresholds: {
+    global: {
+      lines: 80,
+      branches: 70,
+      functions: 80,
+      statements: 80,
+    },
+  },
+};
+```
+
+---
+
+## Testing Anti-Patterns
+
+### ❌ Testing Implementation Details
+```javascript
+// BAD: Testing internal state
+test('counter increments', () => {
+  const counter = new Counter();
+  counter.increment();
+  expect(counter._internalCount).toBe(1);  // Accessing private field
+});
+
+// GOOD: Testing behavior
+test('counter increments', () => {
+  const counter = new Counter();
+  counter.increment();
+  expect(counter.getValue()).toBe(1);  // Testing public API
+});
+```
+
+### ❌ Flaky Tests (Non-Deterministic)
+```python
+# BAD: Time-dependent test
+def test_user_is_adult():
+    user = User(birth_date=datetime.now() - timedelta(days=365*20))
+    assert user.is_adult()  # Might fail on birthday
+
+# GOOD: Fixed date
+def test_user_is_adult():
+    birth_date = datetime(2000, 1, 1)
+    user = User(birth_date=birth_date)
+    assert user.is_adult()
+```
+
+### ❌ Large, Monolithic Tests
+```python
+# BAD: Tests multiple things
+def test_user_workflow():
+    user = create_user()
+    assert user.id is not None
+    login(user)
+    assert is_logged_in()
+    order = create_order(user)
+    assert order.total > 0
+    # ... 100 more lines
+
+# GOOD: Split into focused tests
+def test_create_user_assigns_id():
+    user = create_user()
+    assert user.id is not None
+
+def test_login_sets_session():
+    user = create_user()
+    login(user)
+    assert is_logged_in()
+```
+
+---
+
+## CI/CD Integration
+
+```yaml
+# .github/workflows/test.yml
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Run unit tests
+        run: npm test
+      
+      - name: Run integration tests
+        run: npm run test:integration
+      
+      - name: Check coverage
+        run: npm test -- --coverage --coverageThreshold='{"global":{"lines":80}}'
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v2
+```
+
+---
+
+## Testing Checklist
+
+Before merging code:
+- [ ] All tests pass locally
+- [ ] New features have unit tests
+- [ ] Edge cases are tested
+- [ ] Integration tests for external dependencies
+- [ ] Coverage meets thresholds
+- [ ] No flaky tests
+- [ ] Tests run in CI
+- [ ] Performance-critical code has benchmarks
+
+---
+
+**Remember:** Write tests that give you confidence to refactor. If changing implementation breaks tests, you're testing the wrong thing.

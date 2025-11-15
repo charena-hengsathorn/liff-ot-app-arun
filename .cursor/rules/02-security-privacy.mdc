@@ -1,0 +1,823 @@
+---
+alwaysApply: true
+---
+## OWASP Top 10 - Prevention Strategies
+
+### 1. Injection Attacks (SQL, NoSQL, Command, LDAP)
+
+#### SQL Injection Prevention
+```python
+# ❌ NEVER: String concatenation
+query = f"SELECT * FROM users WHERE email = '{user_email}'"  # VULNERABLE
+cursor.execute(query)
+
+# ✅ ALWAYS: Parameterized queries
+query = "SELECT * FROM users WHERE email = %s"
+cursor.execute(query, (user_email,))
+
+# ✅ BETTER: Use ORM
+user = session.query(User).filter_by(email=user_email).first()
+```
+
+```javascript
+// ❌ NEVER: Template literals in SQL
+const query = `SELECT * FROM users WHERE id = ${userId}`;  // VULNERABLE
+db.query(query);
+
+// ✅ ALWAYS: Parameterized queries
+const query = 'SELECT * FROM users WHERE id = ?';
+db.query(query, [userId]);
+
+// ✅ BETTER: Use query builder/ORM
+const user = await db('users').where({ id: userId }).first();
+```
+
+#### NoSQL Injection Prevention
+```javascript
+// ❌ NEVER: Direct object injection
+const user = await User.findOne({ email: req.body.email });  // VULNERABLE if email is object
+
+// ✅ ALWAYS: Validate and sanitize
+const { email } = req.body;
+if (typeof email !== 'string') {
+  throw new Error('Invalid email format');
+}
+const user = await User.findOne({ email });
+```
+
+#### Command Injection Prevention
+```python
+# ❌ NEVER: Shell=True with user input
+import subprocess
+subprocess.run(f"ping -c 1 {user_input}", shell=True)  # VULNERABLE
+
+# ✅ ALWAYS: Use array syntax, no shell
+subprocess.run(["ping", "-c", "1", user_input])
+
+# ✅ BETTER: Use specialized libraries
+import ipaddress
+try:
+    ip = ipaddress.ip_address(user_input)  # Validates format
+    subprocess.run(["ping", "-c", "1", str(ip)])
+except ValueError:
+    raise InvalidIPError()
+```
+
+---
+
+### 2. Broken Authentication
+
+#### Password Security
+```python
+# ❌ NEVER: Plain text or weak hashing
+password_hash = hashlib.md5(password.encode()).hexdigest()  # INSECURE
+
+# ✅ ALWAYS: bcrypt, scrypt, or Argon2
+import bcrypt
+
+# Hash password
+password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+
+# Verify password
+if bcrypt.checkpw(provided_password.encode(), stored_hash):
+    # Password correct
+    pass
+```
+
+```typescript
+// Node.js with bcrypt
+import bcrypt from 'bcrypt';
+
+// Hash password (10 rounds minimum)
+const saltRounds = 12;  // Higher = more secure but slower
+const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+// Verify password
+const isMatch = await bcrypt.compare(providedPassword, storedHash);
+```
+
+#### JWT Token Security
+```javascript
+// ✅ GOOD: Short-lived access tokens
+const accessToken = jwt.sign(
+  { userId: user.id, role: user.role },
+  process.env.JWT_SECRET,
+  { 
+    expiresIn: '15m',  // Short expiry for access tokens
+    algorithm: 'HS256',
+    issuer: 'your-service-name'
+  }
+);
+
+// ✅ GOOD: Long-lived refresh tokens (stored securely)
+const refreshToken = jwt.sign(
+  { userId: user.id, tokenId: uuidv4() },
+  process.env.REFRESH_TOKEN_SECRET,
+  { expiresIn: '7d' }
+);
+
+// Store refresh token in database for revocation
+await db.refreshTokens.create({
+  userId: user.id,
+  tokenId: refreshToken.tokenId,
+  expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+});
+
+// ⚠️ CRITICAL: Always verify tokens
+try {
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  // Check if token is blacklisted/revoked
+  const isRevoked = await isTokenRevoked(decoded.tokenId);
+  if (isRevoked) throw new Error('Token revoked');
+} catch (error) {
+  throw new UnauthorizedError('Invalid token');
+}
+```
+
+#### Session Management
+```python
+# Flask example - secure session configuration
+app.config.update(
+    SECRET_KEY=os.environ['SECRET_KEY'],  # Strong random key
+    SESSION_COOKIE_SECURE=True,  # HTTPS only
+    SESSION_COOKIE_HTTPONLY=True,  # No JavaScript access
+    SESSION_COOKIE_SAMESITE='Lax',  # CSRF protection
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=1),  # Session expiry
+)
+```
+
+#### Multi-Factor Authentication (MFA)
+```python
+# TOTP (Time-based One-Time Password) implementation
+import pyotp
+
+# Generate secret for user (store securely)
+user.mfa_secret = pyotp.random_base32()
+
+# Verify TOTP code
+def verify_totp(user, code):
+    totp = pyotp.TOTP(user.mfa_secret)
+    return totp.verify(code, valid_window=1)  # Allow 1 step drift
+
+# ✅ ALWAYS: Rate limit MFA attempts
+@rate_limit(max_attempts=5, window=300)  # 5 attempts per 5 minutes
+def verify_mfa_endpoint(user_id, code):
+    user = get_user(user_id)
+    if not verify_totp(user, code):
+        raise InvalidMFACodeError()
+    return create_session(user)
+```
+
+---
+
+### 3. Sensitive Data Exposure
+
+#### Encryption at Rest
+```python
+# ✅ GOOD: Encrypt sensitive fields in database
+from cryptography.fernet import Fernet
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    _ssn_encrypted = db.Column(db.Binary, nullable=True)  # Encrypted field
+    
+    @property
+    def ssn(self):
+        if self._ssn_encrypted:
+            f = Fernet(current_app.config['ENCRYPTION_KEY'])
+            return f.decrypt(self._ssn_encrypted).decode()
+        return None
+    
+    @ssn.setter
+    def ssn(self, value):
+        if value:
+            f = Fernet(current_app.config['ENCRYPTION_KEY'])
+            self._ssn_encrypted = f.encrypt(value.encode())
+        else:
+            self._ssn_encrypted = None
+```
+
+#### Encryption in Transit (TLS)
+```nginx
+# Nginx TLS configuration
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+    
+    # TLS 1.2 minimum (TLS 1.3 preferred)
+    ssl_protocols TLSv1.2 TLSv1.3;
+    
+    # Strong cipher suites only
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256';
+    ssl_prefer_server_ciphers on;
+    
+    # Certificate and key
+    ssl_certificate /etc/ssl/certs/example.com.crt;
+    ssl_certificate_key /etc/ssl/private/example.com.key;
+    
+    # HSTS (force HTTPS)
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+}
+```
+
+#### Secrets Management
+```python
+# ❌ NEVER: Hardcoded secrets
+API_KEY = "sk-1234567890abcdef"  # NEVER DO THIS
+
+# ❌ NEVER: Secrets in version control
+# .env file committed to Git
+
+# ✅ ALWAYS: Environment variables
+import os
+API_KEY = os.environ['API_KEY']
+
+# ✅ BETTER: Use secret management service
+from google.cloud import secretmanager
+
+client = secretmanager.SecretManagerServiceClient()
+name = f"projects/{PROJECT_ID}/secrets/{SECRET_NAME}/versions/latest"
+response = client.access_secret_version(request={"name": name})
+API_KEY = response.payload.data.decode('UTF-8')
+```
+
+```javascript
+// ✅ GOOD: Load secrets from .env (never commit .env!)
+import dotenv from 'dotenv';
+dotenv.config();
+
+const apiKey = process.env.API_KEY;
+
+// ✅ BETTER: Use AWS Secrets Manager, Vault, etc.
+import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+
+async function getSecret(secretName) {
+  const client = new SecretsManagerClient({ region: 'us-east-1' });
+  const response = await client.send(
+    new GetSecretValueCommand({ SecretId: secretName })
+  );
+  return JSON.parse(response.SecretString);
+}
+```
+
+#### Logging - Never Log Secrets
+```python
+# ❌ NEVER: Log sensitive data
+logger.info(f"User logged in: {user.email}, password: {password}")  # NEVER
+
+# ❌ NEVER: Log full request/response with secrets
+logger.debug(f"Request: {json.dumps(request.json())}")  # May contain secrets
+
+# ✅ ALWAYS: Redact sensitive fields
+import copy
+
+def redact_sensitive_data(data):
+    redacted = copy.deepcopy(data)
+    sensitive_fields = ['password', 'token', 'api_key', 'ssn', 'credit_card']
+    
+    for field in sensitive_fields:
+        if field in redacted:
+            redacted[field] = '***REDACTED***'
+    
+    return redacted
+
+logger.info(f"Request: {json.dumps(redact_sensitive_data(request.json()))}")
+```
+
+---
+
+### 4. XML External Entities (XXE)
+
+```python
+# ❌ VULNERABLE: Default XML parser allows external entities
+import xml.etree.ElementTree as ET
+tree = ET.parse(user_xml_file)  # VULNERABLE
+
+# ✅ SECURE: Disable external entities
+import defusedxml.ElementTree as ET
+tree = ET.parse(user_xml_file)  # Safe from XXE
+```
+
+```javascript
+// ✅ SECURE: Use safe XML parser
+import { parseStringPromise } from 'xml2js';
+
+const options = {
+  explicitArray: false,
+  explicitRoot: false,
+  // Disable external entities
+  xmlns: false,
+  normalize: true,
+  normalizeTags: true,
+};
+
+const parsed = await parseStringPromise(xmlString, options);
+```
+
+---
+
+### 5. Broken Access Control
+
+#### Horizontal Privilege Escalation Prevention
+```python
+# ❌ BAD: No ownership check
+@app.route('/api/orders/<order_id>')
+def get_order(order_id):
+    order = Order.query.get(order_id)  # Any user can access any order
+    return jsonify(order.to_dict())
+
+# ✅ GOOD: Verify ownership
+@app.route('/api/orders/<order_id>')
+@login_required
+def get_order(order_id):
+    order = Order.query.get(order_id)
+    if not order:
+        abort(404)
+    
+    # Check ownership
+    if order.user_id != current_user.id and not current_user.is_admin:
+        abort(403, "You don't have permission to access this order")
+    
+    return jsonify(order.to_dict())
+```
+
+#### Vertical Privilege Escalation Prevention
+```typescript
+// ❌ BAD: No role check
+app.delete('/api/users/:userId', async (req, res) => {
+  await User.delete(req.params.userId);  // Any user can delete any user
+  res.send({ success: true });
+});
+
+// ✅ GOOD: Role-based access control (RBAC)
+import { requireRole } from './middleware/auth';
+
+app.delete('/api/users/:userId', 
+  requireAuth,  // Must be authenticated
+  requireRole(['admin']),  // Must be admin
+  async (req, res) => {
+    await User.delete(req.params.userId);
+    res.send({ success: true });
+  }
+);
+
+// Middleware implementation
+function requireRole(allowedRoles: string[]) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    
+    next();
+  };
+}
+```
+
+#### Insecure Direct Object References (IDOR) Prevention
+```python
+# ❌ BAD: Predictable IDs
+@app.route('/api/documents/<int:doc_id>')  # Sequential IDs are guessable
+def get_document(doc_id):
+    # Attacker can try doc_id = 1, 2, 3, ...
+    pass
+
+# ✅ GOOD: Use UUIDs
+import uuid
+
+class Document(db.Model):
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # ...
+
+@app.route('/api/documents/<uuid:doc_id>')
+def get_document(doc_id):
+    doc = Document.query.get(str(doc_id))
+    # Still need ownership check!
+    if doc.owner_id != current_user.id:
+        abort(403)
+    return jsonify(doc.to_dict())
+```
+
+---
+
+### 6. Security Misconfiguration
+
+#### Security Headers
+```python
+# Flask security headers
+from flask_talisman import Talisman
+
+app = Flask(__name__)
+
+# ✅ GOOD: Enable security headers
+Talisman(app, 
+    force_https=True,
+    strict_transport_security=True,
+    content_security_policy={
+        'default-src': "'self'",
+        'script-src': "'self' 'unsafe-inline'",  # Avoid 'unsafe-inline' in production
+        'style-src': "'self' 'unsafe-inline'",
+        'img-src': "'self' data: https:",
+        'font-src': "'self' data:",
+        'connect-src': "'self'",
+        'frame-ancestors': "'none'",
+    },
+    referrer_policy='strict-origin-when-cross-origin',
+    feature_policy={
+        'geolocation': "'none'",
+        'camera': "'none'",
+        'microphone': "'none'",
+    }
+)
+```
+
+```javascript
+// Express.js security headers
+import helmet from 'helmet';
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+}));
+```
+
+#### CORS Configuration
+```python
+# ❌ DANGEROUS: Allow all origins
+from flask_cors import CORS
+CORS(app, origins='*')  # INSECURE
+
+# ✅ GOOD: Whitelist specific origins
+CORS(app, 
+     origins=[
+         'https://yourdomain.com',
+         'https://app.yourdomain.com'
+     ],
+     supports_credentials=True,
+     max_age=3600)
+```
+
+---
+
+### 7. Cross-Site Scripting (XSS)
+
+#### Output Encoding
+```javascript
+// ❌ NEVER: Directly insert user input into HTML
+document.getElementById('message').innerHTML = userInput;  // VULNERABLE
+
+// ✅ ALWAYS: Use textContent or sanitize
+document.getElementById('message').textContent = userInput;  // Safe
+
+// ✅ GOOD: Use templating engine with auto-escaping
+// React (auto-escapes by default)
+<div>{userInput}</div>  // Safe
+
+// Vue (auto-escapes by default)
+<div>{{ userInput }}</div>  // Safe
+
+// ⚠️ CAREFUL: dangerouslySetInnerHTML (React)
+<div dangerouslySetInnerHTML={{ __html: sanitize(userInput) }} />  // Must sanitize!
+```
+
+#### HTML Sanitization
+```javascript
+import DOMPurify from 'dompurify';
+
+// ✅ GOOD: Sanitize HTML before rendering
+const cleanHTML = DOMPurify.sanitize(userInput, {
+  ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br'],
+  ALLOWED_ATTR: ['href'],
+  ALLOWED_URI_REGEXP: /^https?:\/\//,  // Only allow http(s) links
+});
+
+element.innerHTML = cleanHTML;
+```
+
+---
+
+### 8. Insecure Deserialization
+
+```python
+# ❌ NEVER: Use pickle with untrusted data
+import pickle
+data = pickle.loads(user_input)  # DANGEROUS
+
+# ✅ ALWAYS: Use JSON or other safe formats
+import json
+data = json.loads(user_input)  # Safe (JSON can't execute code)
+
+# ✅ GOOD: Validate schema
+from pydantic import BaseModel
+
+class UserData(BaseModel):
+    name: str
+    email: str
+    age: int
+
+# Will raise error if data doesn't match schema
+user_data = UserData.parse_raw(user_input)
+```
+
+---
+
+### 9. Using Components with Known Vulnerabilities
+
+```bash
+# ✅ GOOD: Regular dependency scanning
+npm audit  # Node.js
+pip-audit  # Python
+go mod tidy && go list -m all | nancy  # Go
+bundle audit  # Ruby
+
+# ✅ BETTER: Automate with CI/CD
+# .github/workflows/security.yml
+name: Security Scan
+on: [push, pull_request]
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run Snyk
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+```
+
+---
+
+### 10. Insufficient Logging & Monitoring
+
+#### Security Event Logging
+```python
+import logging
+import json
+from datetime import datetime
+
+# ✅ GOOD: Log security events with context
+def log_security_event(event_type, user_id, details, severity='INFO'):
+    log_entry = {
+        'timestamp': datetime.utcnow().isoformat(),
+        'event_type': event_type,
+        'user_id': user_id,
+        'ip_address': request.remote_addr,
+        'user_agent': request.headers.get('User-Agent'),
+        'details': details,
+        'severity': severity,
+        'trace_id': get_trace_id(),
+    }
+    
+    if severity == 'CRITICAL':
+        logger.critical(json.dumps(log_entry))
+        send_alert_to_security_team(log_entry)
+    elif severity == 'WARNING':
+        logger.warning(json.dumps(log_entry))
+    else:
+        logger.info(json.dumps(log_entry))
+
+# Log authentication events
+log_security_event('LOGIN_SUCCESS', user.id, {'method': 'password'})
+log_security_event('LOGIN_FAILED', None, {'email': email, 'reason': 'invalid_password'}, 'WARNING')
+log_security_event('ACCOUNT_LOCKED', user.id, {'reason': 'too_many_failed_attempts'}, 'CRITICAL')
+
+# Log authorization failures
+log_security_event('ACCESS_DENIED', user.id, {'resource': resource_id, 'action': 'delete'}, 'WARNING')
+
+# Log privilege escalation attempts
+log_security_event('PRIVILEGE_ESCALATION_ATTEMPT', user.id, {'attempted_role': 'admin'}, 'CRITICAL')
+```
+
+---
+
+## Privacy & Data Protection (GDPR, CCPA)
+
+### Personal Identifiable Information (PII) Handling
+
+#### Data Minimization
+```python
+# ❌ BAD: Collect unnecessary data
+class User(db.Model):
+    name = db.Column(db.String(100))
+    email = db.Column(db.String(255))
+    phone = db.Column(db.String(20))
+    ssn = db.Column(db.String(11))  # Do you really need this?
+    birth_date = db.Column(db.Date)
+    mothers_maiden_name = db.Column(db.String(100))  # Definitely don't need this
+
+# ✅ GOOD: Only collect what you need
+class User(db.Model):
+    email = db.Column(db.String(255), nullable=False)
+    name = db.Column(db.String(100))
+    # Only collect additional data if truly necessary
+```
+
+#### Data Retention Policy
+```python
+# ✅ GOOD: Implement retention policy
+from datetime import datetime, timedelta
+
+class DataRetentionPolicy:
+    RETENTION_PERIODS = {
+        'user_activity_logs': timedelta(days=90),
+        'user_accounts_deleted': timedelta(days=30),
+        'payment_records': timedelta(days=365 * 7),  # 7 years for legal reasons
+    }
+    
+    @staticmethod
+    def cleanup_old_data():
+        # Delete old activity logs
+        cutoff_date = datetime.utcnow() - DataRetentionPolicy.RETENTION_PERIODS['user_activity_logs']
+        ActivityLog.query.filter(ActivityLog.created_at < cutoff_date).delete()
+        
+        # Anonymize deleted user accounts
+        cutoff_date = datetime.utcnow() - DataRetentionPolicy.RETENTION_PERIODS['user_accounts_deleted']
+        DeletedUser.query.filter(DeletedUser.deleted_at < cutoff_date).update({
+            'email': 'anonymized@example.com',
+            'name': 'ANONYMIZED',
+            'ip_address': '0.0.0.0',
+        })
+        
+        db.session.commit()
+
+# Schedule cleanup task
+# Run daily via cron or scheduled job
+```
+
+#### Right to Erasure (GDPR Article 17)
+```python
+# ✅ GOOD: Implement data deletion endpoint
+@app.route('/api/users/me/delete', methods=['POST'])
+@login_required
+def delete_user_account():
+    user = current_user
+    
+    # Anonymize user data (don't delete if needed for legal/audit)
+    user.email = f"deleted_{user.id}@example.com"
+    user.name = "DELETED USER"
+    user.profile_picture = None
+    user.phone = None
+    user.deleted_at = datetime.utcnow()
+    
+    # Delete associated personal data
+    UserProfile.query.filter_by(user_id=user.id).delete()
+    UserPreferences.query.filter_by(user_id=user.id).delete()
+    
+    # Keep transactional data for legal reasons, but anonymize
+    Order.query.filter_by(user_id=user.id).update({
+        'customer_name': 'DELETED USER',
+        'customer_email': 'deleted@example.com',
+    })
+    
+    db.session.commit()
+    
+    # Log deletion
+    log_security_event('USER_ACCOUNT_DELETED', user.id, {'reason': 'user_request'})
+    
+    return jsonify({'message': 'Account deleted successfully'})
+```
+
+#### Data Export (GDPR Article 20)
+```python
+# ✅ GOOD: Implement data portability
+@app.route('/api/users/me/export', methods=['GET'])
+@login_required
+def export_user_data():
+    user = current_user
+    
+    # Collect all user data
+    user_data = {
+        'personal_info': {
+            'email': user.email,
+            'name': user.name,
+            'created_at': user.created_at.isoformat(),
+        },
+        'profile': user.profile.to_dict() if user.profile else {},
+        'orders': [order.to_dict() for order in user.orders],
+        'activity_logs': [log.to_dict() for log in user.activity_logs],
+    }
+    
+    # Create JSON file
+    filename = f"user_data_{user.id}_{datetime.utcnow().strftime('%Y%m%d')}.json"
+    
+    return Response(
+        json.dumps(user_data, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': f'attachment;filename={filename}'}
+    )
+```
+
+---
+
+## Rate Limiting & DDoS Protection
+
+```python
+# ✅ GOOD: Implement rate limiting
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(
+    app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="redis://localhost:6379"
+)
+
+# Stricter limits for sensitive endpoints
+@app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("5 per minute")  # Prevent brute force
+def login():
+    pass
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+@limiter.limit("3 per hour")  # Prevent abuse
+def reset_password():
+    pass
+```
+
+---
+
+## Dependency Security Scanning
+
+```yaml
+# .github/workflows/security-scan.yml
+name: Security Scan
+
+on: [push, pull_request]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      
+      # Scan dependencies
+      - name: Run Snyk
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      
+      # Scan for secrets in code
+      - name: TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+      
+      # Scan Docker images
+      - name: Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'myapp:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      # Upload results
+      - name: Upload to Security Tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+```
+
+---
+
+## Security Testing Checklist
+
+Before deploying to production:
+- [ ] All inputs validated and sanitized
+- [ ] No hardcoded secrets in code
+- [ ] SQL injection prevention verified (parameterized queries)
+- [ ] XSS prevention verified (output encoding)
+- [ ] CSRF tokens implemented for state-changing operations
+- [ ] Authentication requires strong passwords + MFA
+- [ ] Authorization checks on all protected resources
+- [ ] Rate limiting on all public endpoints
+- [ ] Security headers configured (CSP, HSTS, etc.)
+- [ ] TLS/HTTPS enforced
+- [ ] Dependencies scanned for vulnerabilities
+- [ ] PII handling complies with GDPR/CCPA
+- [ ] Security events logged with trace_id
+- [ ] Error messages don't leak sensitive info
+
+---
+
+**Remember:** Security is not a feature, it's a requirement. Always think: "How could an attacker abuse this?"
