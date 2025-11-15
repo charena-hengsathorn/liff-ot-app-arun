@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.mjs",
+    "postinstall": "cd strapi && npm install --production",
     "start:all": "concurrently \"npm run start:strapi\" \"npm run start:express\"",
     "start:express": "node server.mjs",
     "start:strapi": "cd strapi && npm start"
