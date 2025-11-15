@@ -830,7 +830,8 @@ app.post('/get-sheets', async (req, res) => {
     const { google } = await import('googleapis');
 
     const auth = new google.auth.GoogleAuth({
-      keyFile: './google-credentials.json',
+      credentials: process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, 'base64').toString()) : undefined,
+      keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || './google-credentials.json',
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
@@ -870,7 +871,8 @@ app.post('/update-day-of-week', async (req, res) => {
     const { google } = await import('googleapis');
 
     const auth = new google.auth.GoogleAuth({
-      keyFile: './google-credentials.json',
+      credentials: process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, 'base64').toString()) : undefined,
+      keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || './google-credentials.json',
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
