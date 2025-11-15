@@ -1930,16 +1930,27 @@ const strapiProxy = createProxyMiddleware({
     if (proxyRes.statusCode === 302 || proxyRes.statusCode === 301) {
       const location = proxyRes.headers.location;
       if (location) {
+        const publicUrl = 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
+        
+        // If redirecting to /admin from /admin, it's a loop - don't rewrite
+        if (location === '/admin' && req.path === '/admin') {
+          console.log(`[Strapi Proxy] Detected redirect loop: ${req.path} -> ${location}, allowing redirect`);
+          // Keep the redirect but it will be handled by the browser
+          return;
+        }
+        
         // If Strapi redirects to its own URL, rewrite it to use the proxy path
-        const publicUrl = process.env.STRAPI_PUBLIC_URL || 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
         if (location.startsWith(publicUrl)) {
           // Keep the redirect as-is (it's already pointing to the public URL)
           console.log(`[Strapi Proxy] Redirect: ${location}`);
-        } else if (location.startsWith('http://localhost:1337') || location.startsWith('/')) {
-          // Rewrite localhost or relative URLs to use the proxy path
-          const newLocation = location.replace('http://localhost:1337', '').replace(/^\//, '');
-          proxyRes.headers.location = `https://liff-ot-app-arun-d0ff4972332c.herokuapp.com/${newLocation}`;
+        } else if (location.startsWith('http://localhost:1337')) {
+          // Rewrite localhost URLs to use the proxy path
+          const newLocation = location.replace('http://localhost:1337', '');
+          proxyRes.headers.location = `${publicUrl}${newLocation}`;
           console.log(`[Strapi Proxy] Rewrote redirect: ${location} -> ${proxyRes.headers.location}`);
+        } else if (location.startsWith('/')) {
+          // Relative redirects - keep them relative (browser will resolve correctly)
+          console.log(`[Strapi Proxy] Relative redirect: ${location}`);
         }
       }
     }
