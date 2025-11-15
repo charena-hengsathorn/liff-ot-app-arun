@@ -90,7 +90,19 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+// Body parser configuration
+// IMPORTANT: Only parse JSON for non-admin routes - proxy needs raw body stream
+const jsonParser = express.json();
+
+app.use((req, res, next) => {
+  // Skip JSON parsing for /admin routes (let proxy handle raw body stream)
+  if (req.path.startsWith('/admin')) {
+    return next();
+  }
+  // For all other routes, parse JSON body
+  jsonParser(req, res, next);
+});
+
 app.use(cookieParser());
 
 // Configure multer for file uploads (memory storage)
@@ -2036,14 +2048,20 @@ if (isLocalStrapi) {
       const targetPath = proxyReq.path;
       console.log(`[Strapi Proxy] Proxying admin ${req.method} ${req.path} to ${strapiTarget}${targetPath}`);
       console.log(`[Strapi Proxy] Original URL: ${req.originalUrl || req.url}`);
-
-      // Ensure Content-Type is set correctly for POST requests
-      if (req.method === 'POST' && req.body) {
-        if (!proxyReq.getHeader('content-type')) {
-          proxyReq.setHeader('content-type', 'application/json');
-        }
+      console.log(`[Strapi Proxy] Content-Type: ${req.headers['content-type'] || 'none'}`);
+      console.log(`[Strapi Proxy] Content-Length: ${req.headers['content-length'] || 'none'}`);
+      
+      // Copy headers from original request
+      const headers = {
+        ...req.headers,
+        'host': strapiTarget.replace(/^https?:\/\//, '').split(':')[0] // Set correct host
+      };
+      
+      // Ensure Content-Type is preserved
+      if (req.headers['content-type']) {
+        proxyReq.setHeader('content-type', req.headers['content-type']);
       }
-
+      
       // Set timeout on the proxy request (25 seconds, less than Heroku's 30s)
       proxyReq.setTimeout(25000, () => {
         console.error(`[Strapi Proxy] Proxy request timeout for ${req.method} ${req.path} → ${targetPath}`);
@@ -2056,6 +2074,13 @@ if (isLocalStrapi) {
           });
         }
       });
+      
+      // Log if request has body data
+      if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+        req.on('data', (chunk) => {
+          console.log(`[Strapi Proxy] Received ${chunk.length} bytes of request body`);
+        });
+      }
     },
     onProxyRes: (proxyRes, req, res) => {
       // Rewrite redirect Location headers to use the proxy path
