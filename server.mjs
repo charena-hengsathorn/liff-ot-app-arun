@@ -2037,7 +2037,9 @@ app.get('*', (req, res) => {
   console.log('=== CATCH-ALL: Serving route:', req.path);
 
   // Don't serve index.html for API routes - let them be handled by specific routes above
-  if (req.path.startsWith('/api/') || req.path.startsWith('/sheets') || req.path.startsWith('/submit') || req.path.startsWith('/clock-event') || req.path.startsWith('/check-existing') || req.path.startsWith('/webhook') || req.path.startsWith('/notify-line') || req.path.startsWith('/health') || req.path.startsWith('/login') || req.path.startsWith('/logout') || req.path.startsWith('/me')) {
+  // Note: GET /login is handled above, so it won't reach here
+  // Only check for POST /login and other API endpoints
+  if (req.path.startsWith('/api/') || req.path.startsWith('/sheets') || req.path.startsWith('/submit') || req.path.startsWith('/clock-event') || req.path.startsWith('/check-existing') || req.path.startsWith('/webhook') || req.path.startsWith('/notify-line') || req.path.startsWith('/health') || (req.method === 'POST' && req.path === '/login') || req.path.startsWith('/logout') || req.path.startsWith('/me')) {
     // If we reach here, the route wasn't handled by any specific route above
     console.log('API route not found, returning 404:', req.path);
     return res.status(404).json({ error: 'API endpoint not found' });
