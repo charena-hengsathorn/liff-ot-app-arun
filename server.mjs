@@ -15,24 +15,24 @@ const PORT = process.env.PORT || 3001;
 // Monthly sheet creation scheduler
 function scheduleMonthlySheetCreation() {
   console.log('🕐 Setting up monthly sheet creation scheduler...');
-  
+
   // Check every minute if it's time to create a new sheet
   setInterval(async () => {
     const now = new Date();
     const bangkokTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-    
+
     // Check if it's the first day of the month at 00:00 (Bangkok time)
     if (bangkokTime.getDate() === 1 && bangkokTime.getHours() === 0 && bangkokTime.getMinutes() === 0) {
       console.log('🎯 Time to create monthly sheet!');
-      
+
       try {
         // Only create sheet in dev environment for safety
         const devResult = await createMonthlySheet('dev');
         console.log('Dev monthly sheet result:', devResult);
-        
+
         // Note: Production sheets should be created manually or through a separate process
         console.log('⚠️ Production monthly sheets must be created manually for safety');
-        
+
       } catch (error) {
         console.error('❌ Error in monthly sheet creation:', error);
       }
@@ -93,12 +93,12 @@ function getEnvironment() {
   if (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'prod') {
     return 'prod';
   }
-  
+
   // Check STRAPI_URL to infer environment
   if (STRAPI_URL.includes('localhost') || STRAPI_URL.includes('127.0.0.1')) {
     return 'dev';
   }
-  
+
   // Default to prod for safety (production environments)
   return 'prod';
 }
@@ -143,7 +143,7 @@ app.use(express.static('dist'));
 
 // API root endpoint
 app.get('/api', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'LIFF Attendance OT App Backend',
     status: 'running',
     timestamp: new Date().toISOString()
@@ -153,20 +153,20 @@ app.get('/api', (req, res) => {
 // Manual monthly sheet creation endpoint
 app.post('/create-monthly-sheet', async (req, res) => {
   console.log('=== CREATE-MONTHLY-SHEET: Manual trigger ===');
-  
+
   try {
     const { env = 'dev', force = false, month = null, year = null } = req.body;
-    
+
     console.log(`📥 Received request with env: ${env}`);
     console.log(`📥 Full request body:`, req.body);
-    
+
     // Allow both dev and prod environments when called from dev
     const safeEnv = env === 'prod' ? 'prod' : 'dev';
-    
+
     console.log(`🔄 Creating sheet for environment: ${safeEnv}`);
-    
+
     const result = await createMonthlySheet(safeEnv, force, month, year);
-    
+
     console.log('Monthly sheet creation result:', result);
     res.json(result);
   } catch (error) {
@@ -184,15 +184,15 @@ app.post('/create-monthly-sheet', async (req, res) => {
 app.post('/sheets', async (req, res) => {
   console.log('=== SHEETS: Received POST request ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
-  
+
   try {
     // Ensure environment is set correctly
     // Priority: request body > NODE_ENV > STRAPI_URL detection
     const env = req.body.env || getEnvironment();
     const requestBody = { ...req.body, env };
-    
+
     console.log(`[Sheets] Using environment: ${env} (from ${req.body.env ? 'request' : 'detection'})`);
-    
+
     const result = await handleGoogleSheetsRequest(requestBody);
     console.log('Google Sheets response:', JSON.stringify(result, null, 2));
     res.json(result);
@@ -209,21 +209,21 @@ app.post('/sheets', async (req, res) => {
 app.post('/submit', async (req, res) => {
   console.log('=== SUBMIT: Received POST request ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
-  
+
   try {
     // Ensure environment is set correctly
     const env = req.body.env || getEnvironment();
     const requestBody = { ...req.body, env };
-    
+
     // First, save to Google Sheets
     const result = await handleGoogleSheetsRequest(requestBody);
     console.log('Submit response (Google Sheets):', JSON.stringify(result, null, 2));
-    
+
     // If Google Sheets save was successful, also save to Strapi
     if (result.success && req.body.driverName && req.body.thaiDate) {
       try {
         const fetch = (await import('node-fetch')).default;
-        
+
         // Find driver by name to get driver ID
         const driverResponse = await fetch(
           `${STRAPI_URL}/api/drivers?filters[name][$eq]=${encodeURIComponent(req.body.driverName)}&populate=*`,
@@ -233,14 +233,14 @@ app.post('/submit', async (req, res) => {
             }
           }
         );
-        
+
         const driverData = await driverResponse.json();
         let driverId = null;
-        
+
         if (driverData.data && driverData.data.length > 0) {
           driverId = driverData.data[0].id;
         }
-        
+
         // Prepare attendance data for Strapi
         const attendanceData = {
           thaiDate: req.body.thaiDate,
@@ -251,14 +251,14 @@ app.post('/submit', async (req, res) => {
           driverName: req.body.driverName, // Keep for backward compatibility
           approved: false
         };
-        
+
         // Add driver relationship if driver found
         if (driverId) {
           attendanceData.driver = driverId;
         }
-        
+
         console.log('Saving attendance to Strapi:', JSON.stringify(attendanceData, null, 2));
-        
+
         // Save to Strapi
         const strapiResponse = await fetch(`${STRAPI_URL}/api/attendances`, {
           method: 'POST',
@@ -269,9 +269,9 @@ app.post('/submit', async (req, res) => {
             data: attendanceData
           })
         });
-        
+
         const strapiResult = await strapiResponse.json();
-        
+
         if (strapiResponse.ok) {
           console.log('Attendance saved to Strapi successfully:', JSON.stringify(strapiResult, null, 2));
         } else {
@@ -283,7 +283,7 @@ app.post('/submit', async (req, res) => {
         // Don't fail the whole request if Strapi save fails, just log it
       }
     }
-    
+
     res.json(result);
   } catch (error) {
     console.error('Submit proxy error:', error);
@@ -297,24 +297,24 @@ app.post('/submit', async (req, res) => {
 app.post('/clock-event', async (req, res) => {
   console.log('=== CLOCK-EVENT: Received POST request ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
-  
+
   try {
     // Ensure environment is set correctly
     const env = req.body.env || getEnvironment();
     const requestBody = { ...req.body, env };
-    
+
     // First, save to Google Sheets
     const result = await handleGoogleSheetsRequest(requestBody);
     console.log('Clock event response (Google Sheets):', JSON.stringify(result, null, 2));
-    
+
     // Return response immediately - don't wait for Strapi operations
     res.json(result);
-    
+
     // Update Strapi asynchronously (non-blocking) after sending response
     if (result.success && req.body.driverName && req.body.thaiDate) {
       try {
         const fetch = (await import('node-fetch')).default;
-        
+
         // Find driver by name to get driver ID
         const driverResponse = await fetch(
           `${STRAPI_URL}/api/drivers?filters[name][$eq]=${encodeURIComponent(req.body.driverName)}&populate=*`,
@@ -324,17 +324,17 @@ app.post('/clock-event', async (req, res) => {
             }
           }
         );
-        
+
         const driverData = await driverResponse.json();
         let driverId = null;
-        
+
         if (driverData.data && driverData.data.length > 0) {
           driverId = driverData.data[0].id;
         }
-        
+
         // Check if attendance record already exists for this driver and date
         const existingAttendanceResponse = await fetch(
-          driverId 
+          driverId
             ? `${STRAPI_URL}/api/attendances?filters[driver][id][$eq]=${driverId}&filters[thaiDate][$eq]=${req.body.thaiDate}&populate=*`
             : `${STRAPI_URL}/api/attendances?filters[driverName][$eq]=${encodeURIComponent(req.body.driverName)}&filters[thaiDate][$eq]=${req.body.thaiDate}&populate=*`,
           {
@@ -343,30 +343,30 @@ app.post('/clock-event', async (req, res) => {
             }
           }
         );
-        
+
         const existingData = await existingAttendanceResponse.json();
-        
+
         if (existingData.data && existingData.data.length > 0) {
           // Update existing attendance record
           const attendanceId = existingData.data[0].id;
           const updateData = {};
-          
+
           if (req.body.type === 'clockIn') {
             updateData.clockIn = req.body.timestamp;
           } else if (req.body.type === 'clockOut') {
             updateData.clockOut = req.body.timestamp;
           }
-          
+
           if (req.body.comments) {
             updateData.comments = req.body.comments;
           }
-          
+
           if (driverId) {
             updateData.driver = driverId;
           }
-          
+
           console.log('Updating attendance in Strapi:', attendanceId, updateData);
-          
+
           const updateResponse = await fetch(`${STRAPI_URL}/api/attendances/${attendanceId}`, {
             method: 'PUT',
             headers: {
@@ -376,9 +376,9 @@ app.post('/clock-event', async (req, res) => {
               data: updateData
             })
           });
-          
+
           const updateResult = await updateResponse.json();
-          
+
           if (updateResponse.ok) {
             console.log('Attendance updated in Strapi successfully:', JSON.stringify(updateResult, null, 2));
           } else {
@@ -392,23 +392,23 @@ app.post('/clock-event', async (req, res) => {
             submittedAt: req.body.submittedAt || new Date().toISOString(),
             approved: false
           };
-          
+
           if (req.body.type === 'clockIn') {
             attendanceData.clockIn = req.body.timestamp;
           } else if (req.body.type === 'clockOut') {
             attendanceData.clockOut = req.body.timestamp;
           }
-          
+
           if (req.body.comments) {
             attendanceData.comments = req.body.comments;
           }
-          
+
           if (driverId) {
             attendanceData.driver = driverId;
           }
-          
+
           console.log('Creating attendance in Strapi:', JSON.stringify(attendanceData, null, 2));
-          
+
           const createResponse = await fetch(`${STRAPI_URL}/api/attendances`, {
             method: 'POST',
             headers: {
@@ -418,9 +418,9 @@ app.post('/clock-event', async (req, res) => {
               data: attendanceData
             })
           });
-          
+
           const createResult = await createResponse.json();
-          
+
           if (createResponse.ok) {
             console.log('Attendance created in Strapi successfully:', JSON.stringify(createResult, null, 2));
           } else {
@@ -444,7 +444,7 @@ app.post('/clock-event', async (req, res) => {
 app.post('/check-existing', async (req, res) => {
   console.log('=== CHECK-EXISTING: Received POST request ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
-  
+
   try {
     // Ensure environment is set correctly
     const env = req.body.env || getEnvironment();
@@ -473,20 +473,20 @@ function getManagerUserIds(env) {
 // LINE Webhook endpoint for handling group chat responses
 app.post('/webhook', async (req, res) => {
   const events = req.body.events || [];
-  
+
   // Debug: Log all incoming webhook data
   console.log('=== WEBHOOK DEBUG ===');
   console.log('Full webhook body:', JSON.stringify(req.body, null, 2));
-  
+
   for (const event of events) {
     console.log('Processing event:', JSON.stringify(event, null, 2));
-    
+
     if (event.source && event.source.type === 'group') {
       console.log('🎯 GROUP ID FOUND:', event.source.groupId);
       console.log('👤 USER ID:', event.source.userId);
       console.log('📝 MESSAGE:', event.message?.text || 'No text message');
     }
-    
+
     if (
       event.type === 'message' &&
       event.message.type === 'text' &&
@@ -500,14 +500,14 @@ app.post('/webhook', async (req, res) => {
 
       if (MANAGER_USER_IDS.includes(event.source.userId)) {
         const text = event.message.text.trim();
-        
+
         // Only process if message starts with Approve or Deny (case-insensitive)
         if (/^(Approve|Deny)\b/i.test(text)) {
           const match = text.match(/^Approve\s+([^\s,]+)$/i);
           if (match) {
             const submittedAt = match[1];
             console.log('Sending updateApproval for submittedAt:', submittedAt);
-            
+
             try {
               const result = await handleGoogleSheetsRequest({
                 action: 'updateApproval',
@@ -547,7 +547,7 @@ app.post('/webhook', async (req, res) => {
               console.error('Error processing approval:', error);
             }
           }
-          
+
           if (/^Approve$/i.test(text)) {
             console.log('Sending approveMostRecent');
             try {
@@ -575,14 +575,14 @@ const NOTIFICATION_CACHE_TTL = 30000; // 30 seconds
 app.post('/notify-line', async (req, res) => {
   console.log('=== NOTIFY-LINE: Received POST request ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
-  
+
   try {
     const { message, env } = req.body;
-    
+
     // Create a unique key for this notification to prevent duplicates
     const notificationKey = `${env}-${message.substring(0, 100)}`; // Use first 100 chars as key
     const now = Date.now();
-    
+
     // Check if this notification was sent recently
     if (notificationCache.has(notificationKey)) {
       const lastSent = notificationCache.get(notificationKey);
@@ -595,21 +595,21 @@ app.post('/notify-line', async (req, res) => {
         });
       }
     }
-    
+
     // Store this notification in cache
     notificationCache.set(notificationKey, now);
-    
+
     // Clean up old cache entries (older than 1 minute)
     for (const [key, timestamp] of notificationCache.entries()) {
       if (now - timestamp > 60000) {
         notificationCache.delete(key);
       }
     }
-    
+
     if (!message) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Message is required' 
+      return res.status(400).json({
+        success: false,
+        error: 'Message is required'
       });
     }
 
@@ -682,7 +682,7 @@ app.post('/notify-line', async (req, res) => {
       const errorText = await lineResponse.text();
       throw new Error(`LINE API error: ${lineResponse.status} - ${errorText}`);
     }
-    
+
     res.json({
       success: true,
       message: 'LINE notification sent successfully',
@@ -702,14 +702,14 @@ app.post('/notify-line', async (req, res) => {
 app.post('/get-sheets', async (req, res) => {
   try {
     const { environment } = req.body;
-    
+
     if (!environment) {
       return res.status(400).json({ error: 'Environment is required' });
     }
 
     // Get spreadsheet ID based on environment
-    const spreadsheetId = environment === 'prod' 
-      ? process.env.VITE_GOOGLE_SHEET_ID_PROD 
+    const spreadsheetId = environment === 'prod'
+      ? process.env.VITE_GOOGLE_SHEET_ID_PROD
       : process.env.VITE_GOOGLE_SHEET_ID_DEV;
 
     if (!spreadsheetId) {
@@ -717,20 +717,20 @@ app.post('/get-sheets', async (req, res) => {
     }
 
     const { google } = await import('googleapis');
-    
+
     const auth = new google.auth.GoogleAuth({
       keyFile: './google-credentials.json',
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
     const sheets = google.sheets({ version: 'v4', auth });
-    
+
     const response = await sheets.spreadsheets.get({
       spreadsheetId: spreadsheetId
     });
-    
+
     const sheetNames = response.data.sheets.map(sheet => sheet.properties.title);
-    
+
     res.json({ sheets: sheetNames });
   } catch (error) {
     console.error('❌ Error fetching sheets:', error);
@@ -742,14 +742,14 @@ app.post('/get-sheets', async (req, res) => {
 app.post('/update-day-of-week', async (req, res) => {
   try {
     const { environment, sheetName } = req.body;
-    
+
     if (!environment || !sheetName) {
       return res.status(400).json({ error: 'Environment and sheet name are required' });
     }
 
     // Get spreadsheet ID based on environment
-    const spreadsheetId = environment === 'prod' 
-      ? process.env.VITE_GOOGLE_SHEET_ID_PROD 
+    const spreadsheetId = environment === 'prod'
+      ? process.env.VITE_GOOGLE_SHEET_ID_PROD
       : process.env.VITE_GOOGLE_SHEET_ID_DEV;
 
     if (!spreadsheetId) {
@@ -757,19 +757,19 @@ app.post('/update-day-of-week', async (req, res) => {
     }
 
     const { google } = await import('googleapis');
-    
+
     const auth = new google.auth.GoogleAuth({
       keyFile: './google-credentials.json',
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
     const sheets = google.sheets({ version: 'v4', auth });
-    
+
     // Get current sheet structure
     const sheetResponse = await sheets.spreadsheets.get({
       spreadsheetId: spreadsheetId
     });
-    
+
     const sheet = sheetResponse.data.sheets.find(s => s.properties.title === sheetName);
     if (!sheet) {
       return res.status(404).json({ error: `Sheet "${sheetName}" not found` });
@@ -780,17 +780,17 @@ app.post('/update-day-of-week', async (req, res) => {
       spreadsheetId: spreadsheetId,
       range: `${sheetName}!1:1`
     });
-    
+
     const headers = headerResponse.data.values?.[0] || [];
     const hasDayOfWeek = headers[2]?.toLowerCase().includes('day') && headers[2]?.toLowerCase().includes('week');
-    
+
     console.log(`📋 Sheet "${sheetName}" headers:`, headers);
     console.log(`🔍 Has Day of Week column:`, hasDayOfWeek);
-    
+
     if (!hasDayOfWeek) {
       // Add Day of Week column
       console.log(`🔧 Adding "Day of Week" column to sheet "${sheetName}"...`);
-      
+
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId: spreadsheetId,
         resource: {
@@ -807,7 +807,7 @@ app.post('/update-day-of-week', async (req, res) => {
           }]
         }
       });
-      
+
       // Add header
       await sheets.spreadsheets.values.update({
         spreadsheetId: spreadsheetId,
@@ -817,39 +817,39 @@ app.post('/update-day-of-week', async (req, res) => {
           values: [['Day of Week']]
         }
       });
-      
+
       console.log(`✅ Added "Day of Week" column header to sheet "${sheetName}"`);
     }
-    
+
     // Get all data rows
     const dataResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: spreadsheetId,
       range: `${sheetName}!A:Z`
     });
-    
+
     const rows = dataResponse.data.values || [];
     if (rows.length <= 1) {
       return res.json({ message: `Sheet "${sheetName}" has no data rows to update` });
     }
-    
+
     console.log(`📊 Found ${rows.length - 1} data rows to update`);
-    
+
     // Helper function to get Thai day of week
     const getDayOfWeek = (thaiDate) => {
       try {
         const parts = thaiDate.split('/');
         if (parts.length !== 3) return 'Unknown';
-        
+
         const day = parseInt(parts[0]);
         const month = parseInt(parts[1]);
         const thaiYear = parseInt(parts[2]);
-        
+
         // Convert Thai year to Gregorian year
         const gregorianYear = thaiYear - 543;
-        
+
         const date = new Date(gregorianYear, month - 1, day);
         const dayOfWeek = date.toLocaleDateString('th-TH', { weekday: 'long' });
-        
+
         console.log(`📅 ${thaiDate} -> ${dayOfWeek}`);
         return dayOfWeek;
       } catch (error) {
@@ -857,13 +857,13 @@ app.post('/update-day-of-week', async (req, res) => {
         return 'Unknown';
       }
     };
-    
+
     // Prepare updates
     const updates = [];
     for (let i = 1; i < rows.length; i++) { // Skip header row
       const row = rows[i];
       const dateValue = row[1]; // Column B (Date)
-      
+
       if (dateValue) {
         const dayOfWeek = getDayOfWeek(dateValue);
         updates.push({
@@ -872,13 +872,13 @@ app.post('/update-day-of-week', async (req, res) => {
         });
       }
     }
-    
+
     if (updates.length === 0) {
       return res.json({ message: `No valid dates found in sheet "${sheetName}"` });
     }
-    
+
     console.log(`🔄 Updating ${updates.length} Day of Week values...`);
-    
+
     // Batch update all values
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: spreadsheetId,
@@ -887,15 +887,15 @@ app.post('/update-day-of-week', async (req, res) => {
         data: updates
       }
     });
-    
+
     console.log(`✅ Updated ${updates.length} Day of Week values in sheet "${sheetName}"`);
-    
-    res.json({ 
+
+    res.json({
       message: `Successfully updated Day of Week column for sheet "${sheetName}". Updated ${updates.length} rows.`,
       updatedRows: updates.length,
       environment: environment
     });
-    
+
   } catch (error) {
     console.error('❌ Error updating Day of Week:', error);
     res.status(500).json({ error: `Failed to update Day of Week: ${error.message}` });
@@ -906,24 +906,24 @@ app.post('/update-day-of-week', async (req, res) => {
 app.post('/calculate-ot-manual', async (req, res) => {
   console.log('=== CALCULATE-OT-MANUAL: Received POST request ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
-  
+
   try {
     const { driverName, thaiDate, clockIn, clockOut, env = 'dev' } = req.body;
-    
+
     // Allow manual OT calculation in both dev and prod environments
-    
+
     if (!driverName || !thaiDate || !clockIn || !clockOut) {
       return res.status(400).json({
         success: false,
         error: 'Driver name, Thai date, clock in, and clock out times are required'
       });
     }
-    
+
     // Import the OT calculation function
     const { calculateOTManually } = await import('./src/googleSheetsHandler.js');
-    
+
     const result = await calculateOTManually(driverName, thaiDate, clockIn, clockOut, env);
-    
+
     console.log('Manual OT calculation result:', JSON.stringify(result, null, 2));
     res.json(result);
   } catch (error) {
@@ -939,22 +939,22 @@ app.post('/calculate-ot-manual', async (req, res) => {
 app.post('/read-and-update-ot', async (req, res) => {
   console.log('=== READ-AND-UPDATE-OT: Received POST request ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
-  
+
   try {
     const { driverName, thaiDate, env = 'dev' } = req.body;
-    
+
     if (!driverName || !thaiDate) {
       return res.status(400).json({
         success: false,
         error: 'Driver name and Thai date are required'
       });
     }
-    
+
     // Import the function
     const { readRowAndUpdateOT } = await import('./src/googleSheetsHandler.js');
-    
+
     const result = await readRowAndUpdateOT(driverName, thaiDate, env);
-    
+
     console.log('Read and update OT result:', JSON.stringify(result, null, 2));
     res.json(result);
   } catch (error) {
@@ -967,25 +967,25 @@ app.post('/read-and-update-ot', async (req, res) => {
 });
 
 // Read row data by row number and update OT Hours endpoint
-        app.post('/read-and-update-ot-by-row', async (req, res) => {
-          console.log('=== READ-AND-UPDATE-OT-BY-ROW: Received POST request ===');
-          console.log('Request body:', JSON.stringify(req.body, null, 2));
-          
-          try {
-            const { rowNumber, thaiDate, env = 'dev', sheetName } = req.body;
-    
+app.post('/read-and-update-ot-by-row', async (req, res) => {
+  console.log('=== READ-AND-UPDATE-OT-BY-ROW: Received POST request ===');
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
+
+  try {
+    const { rowNumber, thaiDate, env = 'dev', sheetName } = req.body;
+
     if (!rowNumber || !thaiDate) {
       return res.status(400).json({
         success: false,
         error: 'Row number and Thai date are required'
       });
     }
-    
-            // Import the function
-            const { readRowAndUpdateOTByRowNumber } = await import('./src/googleSheetsHandler.js');
-            
-            const result = await readRowAndUpdateOTByRowNumber(rowNumber, thaiDate, env, sheetName);
-    
+
+    // Import the function
+    const { readRowAndUpdateOTByRowNumber } = await import('./src/googleSheetsHandler.js');
+
+    const result = await readRowAndUpdateOTByRowNumber(rowNumber, thaiDate, env, sheetName);
+
     console.log('Read and update OT by row result:', JSON.stringify(result, null, 2));
     res.json(result);
   } catch (error) {
@@ -1001,15 +1001,15 @@ app.post('/read-and-update-ot', async (req, res) => {
 app.post('/get-ot-sheets', async (req, res) => {
   console.log('=== GET-OT-SHEETS: Received POST request ===');
   console.log('Request body:', JSON.stringify(req.body, null, 2));
-  
+
   try {
     const { env = 'dev' } = req.body;
-    
+
     // Import the function
     const { getAvailableSheetsForOT } = await import('./src/googleSheetsHandler.js');
-    
+
     const result = await getAvailableSheetsForOT(env);
-    
+
     console.log('Get OT sheets result:', JSON.stringify(result, null, 2));
     res.json(result);
   } catch (error) {
@@ -1021,71 +1021,71 @@ app.post('/get-ot-sheets', async (req, res) => {
   }
 });
 
-        // Read row data for auto-population
-        app.post('/read-row-data', async (req, res) => {
-          console.log('=== READ-ROW-DATA: Received POST request ===');
-          console.log('Request body:', JSON.stringify(req.body, null, 2));
-          
-          try {
-            const { sheetName, rowNumber, env = 'dev' } = req.body;
-            
-            if (!sheetName || !rowNumber) {
-              return res.status(400).json({
-                success: false,
-                error: 'Sheet name and row number are required'
-              });
-            }
-            
-            // Import the function
-            const { readRowDataForOT } = await import('./src/googleSheetsHandler.js');
-            
-            const result = await readRowDataForOT(sheetName, rowNumber, env);
-            
-            console.log('Read row data result:', JSON.stringify(result, null, 2));
-            res.json(result);
-          } catch (error) {
-            console.error('Read row data error:', error);
-            res.status(500).json({
-              success: false,
-              error: error.message
-            });
-          }
-        });
+// Read row data for auto-population
+app.post('/read-row-data', async (req, res) => {
+  console.log('=== READ-ROW-DATA: Received POST request ===');
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
 
-        // Update OT Hours column directly
-        app.post('/update-ot-hours', async (req, res) => {
-          console.log('=== UPDATE-OT-HOURS: Received POST request ===');
-          console.log('Request body:', JSON.stringify(req.body, null, 2));
-          
-          try {
-            const { sheetName, rowNumber, otHours, env = 'dev' } = req.body;
-            
-            if (!sheetName || !rowNumber || otHours === undefined) {
-              return res.status(400).json({
-                success: false,
-                error: 'Sheet name, row number, and OT hours are required'
-              });
-            }
-            
-            // Import the function
-            const { updateOTHoursDirectly } = await import('./src/googleSheetsHandler.js');
-            
-            const result = await updateOTHoursDirectly(sheetName, rowNumber, otHours, env);
-            
-            console.log('Update OT hours result:', JSON.stringify(result, null, 2));
-            res.json(result);
-          } catch (error) {
-            console.error('Update OT hours error:', error);
-            res.status(500).json({
-              success: false,
-              error: error.message
-            });
-          }
-        });
+  try {
+    const { sheetName, rowNumber, env = 'dev' } = req.body;
+
+    if (!sheetName || !rowNumber) {
+      return res.status(400).json({
+        success: false,
+        error: 'Sheet name and row number are required'
+      });
+    }
+
+    // Import the function
+    const { readRowDataForOT } = await import('./src/googleSheetsHandler.js');
+
+    const result = await readRowDataForOT(sheetName, rowNumber, env);
+
+    console.log('Read row data result:', JSON.stringify(result, null, 2));
+    res.json(result);
+  } catch (error) {
+    console.error('Read row data error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update OT Hours column directly
+app.post('/update-ot-hours', async (req, res) => {
+  console.log('=== UPDATE-OT-HOURS: Received POST request ===');
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
+
+  try {
+    const { sheetName, rowNumber, otHours, env = 'dev' } = req.body;
+
+    if (!sheetName || !rowNumber || otHours === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'Sheet name, row number, and OT hours are required'
+      });
+    }
+
+    // Import the function
+    const { updateOTHoursDirectly } = await import('./src/googleSheetsHandler.js');
+
+    const result = await updateOTHoursDirectly(sheetName, rowNumber, otHours, env);
+
+    console.log('Update OT hours result:', JSON.stringify(result, null, 2));
+    res.json(result);
+  } catch (error) {
+    console.error('Update OT hours error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV || 'development'
@@ -1102,13 +1102,13 @@ app.get('/health', (req, res) => {
 app.get('/api/attendances', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
-    
+
     const response = await fetch(`${STRAPI_URL}/api/attendances?populate=*`, {
       headers: {
         'Content-Type': 'application/json'
       }
     });
-    
+
     const data = await response.json();
     res.json(data);
   } catch (error) {
@@ -1122,13 +1122,13 @@ app.get('/api/attendances/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const fetch = (await import('node-fetch')).default;
-    
+
     const response = await fetch(`${STRAPI_URL}/api/attendances/${id}?populate=*`, {
       headers: {
         'Content-Type': 'application/json'
       }
     });
-    
+
     const data = await response.json();
     res.json(data);
   } catch (error) {
@@ -1141,7 +1141,7 @@ app.get('/api/attendances/:id', async (req, res) => {
 app.post('/api/attendances', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
-    
+
     const response = await fetch(`${STRAPI_URL}/api/attendances`, {
       method: 'POST',
       headers: {
@@ -1151,7 +1151,7 @@ app.post('/api/attendances', async (req, res) => {
         data: req.body
       })
     });
-    
+
     const data = await response.json();
     res.json(data);
   } catch (error) {
@@ -1165,7 +1165,7 @@ app.put('/api/attendances/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const fetch = (await import('node-fetch')).default;
-    
+
     const response = await fetch(`${STRAPI_URL}/api/attendances/${id}`, {
       method: 'PUT',
       headers: {
@@ -1175,7 +1175,7 @@ app.put('/api/attendances/:id', async (req, res) => {
         data: req.body
       })
     });
-    
+
     const data = await response.json();
     res.json(data);
   } catch (error) {
@@ -1189,14 +1189,14 @@ app.delete('/api/attendances/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const fetch = (await import('node-fetch')).default;
-    
+
     const response = await fetch(`${STRAPI_URL}/api/attendances/${id}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json'
       }
     });
-    
+
     const data = await response.json();
     res.json(data);
   } catch (error) {
@@ -1210,7 +1210,7 @@ app.get('/api/attendances/driver/:driverName', async (req, res) => {
   try {
     const { driverName } = req.params;
     const fetch = (await import('node-fetch')).default;
-    
+
     // First try to find driver by name
     const driverResponse = await fetch(
       `${STRAPI_URL}/api/drivers?filters[name][$eq]=${encodeURIComponent(driverName)}&populate=*`,
@@ -1220,12 +1220,12 @@ app.get('/api/attendances/driver/:driverName', async (req, res) => {
         }
       }
     );
-    
+
     const driverData = await driverResponse.json();
-    
+
     if (driverData.data && driverData.data.length > 0) {
       const driverId = driverData.data[0].id;
-      
+
       // Find attendances by driver relation
       const response = await fetch(
         `${STRAPI_URL}/api/attendances?filters[driver][id][$eq]=${driverId}&populate=*`,
@@ -1235,7 +1235,7 @@ app.get('/api/attendances/driver/:driverName', async (req, res) => {
           }
         }
       );
-      
+
       const data = await response.json();
       res.json(data);
     } else {
@@ -1248,7 +1248,7 @@ app.get('/api/attendances/driver/:driverName', async (req, res) => {
           }
         }
       );
-      
+
       const data = await response.json();
       res.json(data);
     }
@@ -1266,28 +1266,28 @@ app.get('/api/attendances/driver/:driverName', async (req, res) => {
 app.get('/api/drivers', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
-    
+
     console.log('Fetching drivers from Strapi:', `${STRAPI_URL}/api/drivers?populate=*`);
-    
+
     const response = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
       headers: {
         'Content-Type': 'application/json'
       }
     });
-    
+
     const data = await response.json();
-    
+
     console.log('Strapi drivers response status:', response.status);
     console.log('Strapi drivers response:', JSON.stringify(data, null, 2));
-    
+
     // Set CORS headers
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
-    
+
     if (!response.ok) {
       return res.status(response.status).json(data);
     }
-    
+
     res.json(data);
   } catch (error) {
     console.error('Error fetching drivers:', error);
@@ -1301,34 +1301,34 @@ app.get('/api/drivers', async (req, res) => {
 app.get('/api/drivers/manager-view', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
-    
+
     console.log(`[Manager View] Fetching drivers from Strapi: ${STRAPI_URL}/api/drivers?populate=*`);
-    
+
     // Fetch all drivers with populated relations
     const driversResponse = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
       headers: {
         'Content-Type': 'application/json'
       }
     });
-    
+
     const driversData = await driversResponse.json();
-    
+
     console.log(`[Manager View] Strapi response status: ${driversResponse.status}`);
     console.log(`[Manager View] Drivers found: ${driversData.data?.length || 0}`);
-    
+
     if (!driversResponse.ok) {
       console.error(`[Manager View] Strapi error:`, driversData);
       return res.status(driversResponse.status).json(driversData);
     }
-    
+
     // Process each driver to get additional info
     const driversArray = driversData.data || [];
     console.log(`[Manager View] Processing ${driversArray.length} drivers`);
-    
+
     // First, try to get all last clock-ins from Strapi in batch
     // Then batch fetch from Google Sheets for drivers without Strapi data
     const driversNeedingGoogleSheets = [];
-    
+
     // Process drivers and collect those that need Google Sheets lookup
     const driversWithInfo = await Promise.all(
       driversArray.map(async (driver) => {
@@ -1339,12 +1339,12 @@ app.get('/api/drivers/manager-view', async (req, res) => {
           const photoPath = driver.attributes.photo.data.attributes?.url || driver.attributes.photo.data.url;
           if (photoPath) {
             // If it's already a full URL, use it; otherwise prepend Strapi URL
-            photoUrl = photoPath.startsWith('http') 
-              ? photoPath 
+            photoUrl = photoPath.startsWith('http')
+              ? photoPath
               : `${STRAPI_URL}${photoPath.startsWith('/') ? '' : '/'}${photoPath}`;
           }
         }
-        
+
         const driverInfo = {
           id: driver.id,
           name: driver.attributes?.name || driver.name || '',
@@ -1357,7 +1357,7 @@ app.get('/api/drivers/manager-view', async (req, res) => {
           user: null,
           lastClockIn: null
         };
-        
+
         // Get user info if driver has a user relation
         if (driver.attributes?.user?.data || driver.user) {
           const userId = driver.attributes?.user?.data?.id || driver.user?.id || driver.user;
@@ -1383,15 +1383,15 @@ app.get('/api/drivers/manager-view', async (req, res) => {
             }
           }
         }
-        
+
         // Get last attendance (clock in) for this driver
         // Always check Google Sheets since it's the source of truth, but also check Strapi for comparison
         const driverName = driver.attributes?.name || driver.name || '';
-        
+
         if (driverName) {
           // Always mark for Google Sheets lookup (it's the source of truth)
           driversNeedingGoogleSheets.push({ driverName, driverInfo });
-          
+
           // Also try Strapi for comparison (optional - we'll use Google Sheets result anyway)
           try {
             const driverId = driver.id;
@@ -1404,7 +1404,7 @@ app.get('/api/drivers/manager-view', async (req, res) => {
               }
             );
             const attendanceData = await attendanceResponse.json();
-            
+
             if (attendanceResponse.ok && attendanceData.data && attendanceData.data.length > 0) {
               const lastAttendance = attendanceData.data[0];
               console.log(`[Manager View] Found Strapi attendance for ${driverName} (for comparison):`, {
@@ -1423,20 +1423,20 @@ app.get('/api/drivers/manager-view', async (req, res) => {
             // Continue - we'll use Google Sheets data
           }
         }
-        
+
         return driverInfo;
       })
     );
-    
+
     // Batch fetch last clock-ins from Google Sheets for drivers without Strapi data
     if (driversNeedingGoogleSheets.length > 0) {
       console.log(`[Manager View] Batch fetching ${driversNeedingGoogleSheets.length} drivers from Google Sheets`);
       console.log(`[Manager View] Driver names:`, driversNeedingGoogleSheets.map(d => d.driverName));
-      
+
       // Determine environment based on NODE_ENV or request origin
       // Priority: NODE_ENV > request origin detection
       let env = 'prod'; // Default to prod for safety
-      
+
       // Check NODE_ENV first (most reliable)
       if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev') {
         env = 'dev';
@@ -1448,26 +1448,26 @@ app.get('/api/drivers/manager-view', async (req, res) => {
         const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
         env = isLocalhost ? 'dev' : 'prod';
       }
-      
+
       console.log(`[Manager View] NODE_ENV: ${process.env.NODE_ENV}`);
       console.log(`[Manager View] Request origin: ${req.headers.origin || req.headers.referer || 'N/A'}`);
       console.log(`[Manager View] Using environment: ${env}`);
-      
+
       const driverNames = driversNeedingGoogleSheets.map(d => d.driverName);
       // Check only the latest sheet for faster performance
       const googleSheetsResults = await getLastClockInsForDrivers(driverNames, env, 1); // Check only latest sheet with correct env
-      
+
       console.log(`[Manager View] Google Sheets results:`, JSON.stringify(googleSheetsResults, null, 2));
-      
+
       // Update driver info with Google Sheets data
       // Use case-insensitive lookup to handle casing differences
       driversNeedingGoogleSheets.forEach(({ driverName, driverInfo }) => {
         // Try exact match first
         let result = googleSheetsResults[driverName];
-        
+
         // If not found, try case-insensitive lookup
         if (!result) {
-          const matchingKey = Object.keys(googleSheetsResults).find(key => 
+          const matchingKey = Object.keys(googleSheetsResults).find(key =>
             key.toLowerCase() === driverName.toLowerCase()
           );
           if (matchingKey) {
@@ -1475,7 +1475,7 @@ app.get('/api/drivers/manager-view', async (req, res) => {
             console.log(`[Manager View] Found case-insensitive match: "${driverName}" -> "${matchingKey}"`);
           }
         }
-        
+
         console.log(`[Manager View] Processing result for ${driverName}:`, result);
         if (result && result.success) {
           console.log(`[Manager View] Setting lastClockIn for ${driverName}: date=${result.date}, time=${result.time}`);
@@ -1490,11 +1490,11 @@ app.get('/api/drivers/manager-view', async (req, res) => {
         }
       });
     }
-    
+
     // Set CORS headers
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
-    
+
     res.json({
       data: driversWithInfo,
       meta: {
@@ -1514,13 +1514,13 @@ app.get('/api/drivers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const fetch = (await import('node-fetch')).default;
-    
+
     const response = await fetch(`${STRAPI_URL}/api/drivers/${id}?populate=*`, {
       headers: {
         'Content-Type': 'application/json'
       }
     });
-    
+
     const data = await response.json();
     res.json(data);
   } catch (error) {
@@ -1534,7 +1534,7 @@ app.get('/api/drivers/name/:name', async (req, res) => {
   try {
     const { name } = req.params;
     const fetch = (await import('node-fetch')).default;
-    
+
     const response = await fetch(
       `${STRAPI_URL}/api/drivers?filters[name][$eq]=${encodeURIComponent(name)}&populate=*`,
       {
@@ -1543,7 +1543,7 @@ app.get('/api/drivers/name/:name', async (req, res) => {
         }
       }
     );
-    
+
     const data = await response.json();
     res.json(data);
   } catch (error) {
@@ -1568,35 +1568,35 @@ app.post('/api/upload', upload.single('files'), async (req, res) => {
 
     const fetch = (await import('node-fetch')).default;
     const FormData = (await import('form-data')).default;
-    
+
     // Create form data to forward to Strapi
     const formData = new FormData();
     formData.append('files', req.file.buffer, {
       filename: req.file.originalname,
       contentType: req.file.mimetype
     });
-    
+
     console.log('Forwarding upload to Strapi:', `${STRAPI_URL}/api/upload`);
-    
+
     const response = await fetch(`${STRAPI_URL}/api/upload`, {
       method: 'POST',
       body: formData,
       headers: formData.getHeaders()
     });
-    
+
     const data = await response.json();
-    
+
     console.log('Strapi upload response status:', response.status);
     console.log('Strapi upload response:', JSON.stringify(data, null, 2));
-    
+
     // Set CORS headers
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
-    
+
     if (!response.ok) {
       return res.status(response.status).json(data);
     }
-    
+
     res.json(data);
   } catch (error) {
     console.error('Error uploading file:', error);
@@ -1610,13 +1610,13 @@ app.post('/api/upload', upload.single('files'), async (req, res) => {
 app.post('/api/drivers', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
-    
+
     // If data is already wrapped, use it; otherwise wrap it
     const bodyData = req.body.data || req.body;
-    
+
     console.log('Creating driver in Strapi:', JSON.stringify(bodyData, null, 2));
     console.log('Strapi URL:', STRAPI_URL);
-    
+
     const response = await fetch(`${STRAPI_URL}/api/drivers`, {
       method: 'POST',
       headers: {
@@ -1626,12 +1626,12 @@ app.post('/api/drivers', async (req, res) => {
         data: bodyData
       })
     });
-    
+
     const data = await response.json();
-    
+
     console.log('Strapi response status:', response.status);
     console.log('Strapi response data:', JSON.stringify(data, null, 2));
-    
+
     if (!response.ok) {
       console.error('Strapi error response:', data);
       // Set CORS headers even on error
@@ -1639,11 +1639,11 @@ app.post('/api/drivers', async (req, res) => {
       res.header('Access-Control-Allow-Credentials', 'true');
       return res.status(response.status).json(data);
     }
-    
+
     // Set CORS headers explicitly
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
-    
+
     res.json(data);
   } catch (error) {
     console.error('Error creating driver:', error);
@@ -1668,12 +1668,12 @@ app.put('/api/drivers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const fetch = (await import('node-fetch')).default;
-    
+
     // If data is already wrapped, use it; otherwise wrap it
     const bodyData = req.body.data || req.body;
-    
+
     console.log('Updating driver in Strapi:', id, JSON.stringify(bodyData, null, 2));
-    
+
     const response = await fetch(`${STRAPI_URL}/api/drivers/${id}`, {
       method: 'PUT',
       headers: {
@@ -1683,20 +1683,20 @@ app.put('/api/drivers/:id', async (req, res) => {
         data: bodyData
       })
     });
-    
+
     const data = await response.json();
-    
+
     console.log('Strapi update response status:', response.status);
     console.log('Strapi update response data:', JSON.stringify(data, null, 2));
-    
+
     // Set CORS headers
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
-    
+
     if (!response.ok) {
       return res.status(response.status).json(data);
     }
-    
+
     res.json(data);
   } catch (error) {
     console.error('Error updating driver:', error);
@@ -1711,29 +1711,29 @@ app.delete('/api/drivers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const fetch = (await import('node-fetch')).default;
-    
+
     console.log('Deleting driver in Strapi:', id);
-    
+
     const response = await fetch(`${STRAPI_URL}/api/drivers/${id}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json'
       }
     });
-    
+
     const data = await response.json();
-    
+
     console.log('Strapi delete response status:', response.status);
     console.log('Strapi delete response data:', JSON.stringify(data, null, 2));
-    
+
     // Set CORS headers
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
-    
+
     if (!response.ok) {
       return res.status(response.status).json(data);
     }
-    
+
     res.json(data);
   } catch (error) {
     console.error('Error deleting driver:', error);
@@ -1748,20 +1748,20 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
   try {
     const { env = 'prod', sheetName = 'Login History', month, year } = req.body;
     const fetch = (await import('node-fetch')).default;
-    
+
     console.log(`[Sync Login History] Starting sync from Google Sheets`);
     console.log(`[Sync Login History] Environment: ${env}, Sheet: ${sheetName}`);
-    
+
     // Read login data from Google Sheets
     const sheetData = await readLoginHistoryFromSheet(env, sheetName);
-    
+
     if (!sheetData.success) {
       return res.status(400).json({
         success: false,
         error: sheetData.error
       });
     }
-    
+
     // Get or create month record
     let monthRecord = null;
     if (month && year) {
@@ -1772,19 +1772,19 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
           { headers: { 'Content-Type': 'application/json' } }
         );
         const monthData = await monthResponse.json();
-        
+
         if (monthData.data && monthData.data.length > 0) {
           monthRecord = monthData.data[0];
         } else {
           // Create new month record
-          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                             'July', 'August', 'September', 'October', 'November', 'December'];
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'];
           const monthName = monthNames[month - 1];
           const thaiYear = year + 543; // Convert to Thai Buddhist year
-          
+
           const startDate = new Date(year, month - 1, 1);
           const endDate = new Date(year, month, 0);
-          
+
           const createMonthResponse = await fetch(`${STRAPI_URL}/api/months`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1800,7 +1800,7 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
               }
             })
           });
-          
+
           const createMonthData = await createMonthResponse.json();
           if (createMonthResponse.ok && createMonthData.data) {
             monthRecord = createMonthData.data;
@@ -1810,7 +1810,7 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
         console.error('[Sync Login History] Error handling month:', err);
       }
     }
-    
+
     // Sync each login record to Strapi
     const results = {
       success: 0,
@@ -1818,7 +1818,7 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
       skipped: 0,
       errors: []
     };
-    
+
     for (const record of sheetData.records) {
       try {
         // Find user by username
@@ -1827,7 +1827,7 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
           { headers: { 'Content-Type': 'application/json' } }
         );
         const userData = await userResponse.json();
-        
+
         let userId = null;
         if (userData.data && userData.data.length > 0) {
           userId = userData.data[0].id;
@@ -1836,20 +1836,20 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
           results.skipped++;
           continue;
         }
-        
+
         // Check if login record already exists (by username and loginAttemptAt)
         const existingLoginResponse = await fetch(
           `${STRAPI_URL}/api/logins?filters[user][id][$eq]=${userId}&filters[loginAttemptAt][$eq]=${record.loginAttemptAt}`,
           { headers: { 'Content-Type': 'application/json' } }
         );
         const existingLoginData = await existingLoginResponse.json();
-        
+
         if (existingLoginData.data && existingLoginData.data.length > 0) {
           // Already exists - skip
           results.skipped++;
           continue;
         }
-        
+
         // Create login record in Strapi
         const loginData = {
           data: {
@@ -1863,17 +1863,17 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
             deviceInfo: record.deviceInfo || null
           }
         };
-        
+
         if (monthRecord) {
           loginData.data.month = monthRecord.id;
         }
-        
+
         const createLoginResponse = await fetch(`${STRAPI_URL}/api/logins`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(loginData)
         });
-        
+
         if (createLoginResponse.ok) {
           results.success++;
         } else {
@@ -1893,9 +1893,9 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
         });
       }
     }
-    
+
     console.log(`[Sync Login History] Sync complete:`, results);
-    
+
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
     res.json({
@@ -1921,8 +1921,28 @@ const strapiProxy = createProxyMiddleware({
   changeOrigin: true,
   ws: true, // Enable websocket proxying for Strapi admin
   logLevel: 'debug',
+  followRedirects: false, // Don't follow redirects automatically
   onProxyReq: (proxyReq, req, res) => {
     console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to Strapi`);
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    // Rewrite redirect Location headers to use the proxy path
+    if (proxyRes.statusCode === 302 || proxyRes.statusCode === 301) {
+      const location = proxyRes.headers.location;
+      if (location) {
+        // If Strapi redirects to its own URL, rewrite it to use the proxy path
+        const publicUrl = process.env.STRAPI_PUBLIC_URL || 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
+        if (location.startsWith(publicUrl)) {
+          // Keep the redirect as-is (it's already pointing to the public URL)
+          console.log(`[Strapi Proxy] Redirect: ${location}`);
+        } else if (location.startsWith('http://localhost:1337') || location.startsWith('/')) {
+          // Rewrite localhost or relative URLs to use the proxy path
+          const newLocation = location.replace('http://localhost:1337', '').replace(/^\//, '');
+          proxyRes.headers.location = `https://liff-ot-app-arun-d0ff4972332c.herokuapp.com/${newLocation}`;
+          console.log(`[Strapi Proxy] Rewrote redirect: ${location} -> ${proxyRes.headers.location}`);
+        }
+      }
+    }
   },
   onError: (err, req, res) => {
     console.error('[Strapi Proxy] Error:', err.message);
@@ -1939,12 +1959,12 @@ app.use('/api', (req, res, next) => {
   // Check if this is a Strapi API route (has content type in path like /api/drivers, /api/attendances, etc.)
   const strapiApiRoutes = ['/api/drivers', '/api/attendances', '/api/login', '/api/month', '/api/upload', '/api/auth', '/api/users-permissions'];
   const isStrapiRoute = strapiApiRoutes.some(route => req.path.startsWith(route));
-  
+
   if (isStrapiRoute) {
     console.log(`[Strapi Proxy] Proxying Strapi API: ${req.path}`);
     return strapiProxy(req, res, next);
   }
-  
+
   // Otherwise, let Express handle it
   next();
 });
@@ -1952,14 +1972,14 @@ app.use('/api', (req, res, next) => {
 // Simple catch-all route for SPA - MUST BE LAST (after all API routes)
 app.get('*', (req, res) => {
   console.log('=== CATCH-ALL: Serving route:', req.path);
-  
+
   // Don't serve index.html for API routes - let them be handled by specific routes above
   if (req.path.startsWith('/api/') || req.path.startsWith('/sheets') || req.path.startsWith('/submit') || req.path.startsWith('/clock-event') || req.path.startsWith('/check-existing') || req.path.startsWith('/webhook') || req.path.startsWith('/notify-line') || req.path.startsWith('/health') || req.path.startsWith('/login') || req.path.startsWith('/logout') || req.path.startsWith('/me')) {
     // If we reach here, the route wasn't handled by any specific route above
     console.log('API route not found, returning 404:', req.path);
     return res.status(404).json({ error: 'API endpoint not found' });
   }
-  
+
   // Serve the React app for all other routes
   console.log('Serving React app from dist/index.html');
   res.sendFile('dist/index.html', { root: '.' });
