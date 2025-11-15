@@ -1968,15 +1968,14 @@ const strapiProxy = createProxyMiddleware({
 });
 
 // Proxy Strapi admin panel (all HTTP methods)
-// Use pathRewrite to ensure Strapi receives the correct path
+// Don't rewrite the path - forward /admin to Strapi as /admin
 app.use('/admin', createProxyMiddleware({
   target: 'http://localhost:1337',
   changeOrigin: true,
   ws: true,
   logLevel: 'debug',
-  pathRewrite: {
-    '^/admin': '/admin', // Keep the /admin path
-  },
+  // Don't rewrite path - forward /admin to Strapi as /admin
+  pathRewrite: false,
   onProxyReq: (proxyReq, req, res) => {
     console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to Strapi`);
   },
@@ -1986,7 +1985,7 @@ app.use('/admin', createProxyMiddleware({
       const location = proxyRes.headers.location;
       if (location) {
         const publicUrl = 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
-        
+
         // If redirecting to /admin from /admin, check if it's a sub-path redirect
         if (location === '/admin' && req.path === '/admin') {
           // This is a loop - Strapi might be redirecting to login
@@ -1995,7 +1994,7 @@ app.use('/admin', createProxyMiddleware({
           // Let the browser handle it - it might be redirecting to /admin/auth/login
           return;
         }
-        
+
         // If Strapi redirects to its own URL, rewrite it to use the proxy path
         if (location.startsWith(publicUrl)) {
           console.log(`[Strapi Proxy] Redirect: ${location}`);
