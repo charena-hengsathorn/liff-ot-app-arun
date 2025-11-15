@@ -1968,14 +1968,16 @@ const strapiProxy = createProxyMiddleware({
 });
 
 // Proxy Strapi admin panel (all HTTP methods)
-// Don't rewrite the path - forward /admin to Strapi as /admin
+// Express strips /admin prefix, so we need to add it back for Strapi
 app.use('/admin', createProxyMiddleware({
   target: 'http://localhost:1337',
   changeOrigin: true,
   ws: true,
   logLevel: 'debug',
-  // Don't rewrite path - forward /admin to Strapi as /admin
-  pathRewrite: false,
+  // Express strips /admin, so we need to add it back
+  pathRewrite: {
+    '^/admin': '/admin', // Add /admin back since Express strips it
+  },
   onProxyReq: (proxyReq, req, res) => {
     console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to Strapi`);
   },
