@@ -5,6 +5,10 @@ import multer from 'multer';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { handleGoogleSheetsRequest, createMonthlySheet, readLoginHistoryFromSheet, getLastClockInForDriver, getLastClockInsForDrivers } from './src/googleSheetsHandler.js';
 import { setupAuthRoutes } from './src/login/authRoutes.js';
+import pg from 'pg';
+import bcrypt from 'bcryptjs';
+
+const { Client } = pg;
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
@@ -136,6 +140,81 @@ function getEnvironment() {
 // Setup authentication routes (login, logout, /me)
 setupAuthRoutes(app, {
   strapiUrl: STRAPI_URL
+});
+
+// TEMPORARY: User creation endpoint (remove after initial setup)
+// Secret key: create_user_temp_2024
+app.post('/api/create-user-temp', async (req, res) => {
+  const { secret, username, email, password } = req.body;
+
+  // Validate secret key
+  if (secret !== 'create_user_temp_2024') {
+    return res.status(403).json({ success: false, error: 'Invalid secret key' });
+  }
+
+  if (!username || !email || !password) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields: username, email, password'
+    });
+  }
+
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
+  });
+
+  try {
+    await client.connect();
+
+    // Check if user already exists
+    const checkUser = await client.query(
+      'SELECT id FROM up_users WHERE username = $1 OR email = $2',
+      [username, email]
+    );
+
+    if (checkUser.rows.length > 0) {
+      await client.end();
+      return res.status(409).json({
+        success: false,
+        error: 'User already exists with that username or email'
+      });
+    }
+
+    // Hash password (Strapi uses bcrypt with 10 rounds)
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Get the "Authenticated" role ID
+    const roleResult = await client.query(
+      "SELECT id FROM up_roles WHERE type = 'authenticated' LIMIT 1"
+    );
+    const roleId = roleResult.rows[0]?.id || 1;
+
+    // Insert user
+    const result = await client.query(
+      `INSERT INTO up_users (username, email, password, confirmed, blocked, role, provider, created_at, updated_at, created_by_id, updated_by_id)
+       VALUES ($1, $2, $3, true, false, $4, 'local', NOW(), NOW(), 1, 1)
+       RETURNING id, username, email`,
+      [username, email, hashedPassword, roleId]
+    );
+
+    await client.end();
+
+    res.json({
+      success: true,
+      user: result.rows[0],
+      message: 'User created successfully. You can now login.'
+    });
+  } catch (error) {
+    console.error('User creation error:', error);
+    try {
+      await client.end();
+    } catch (e) {}
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // GET /login - serve React app (POST /login is handled by setupAuthRoutes)
