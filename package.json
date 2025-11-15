@@ -6,7 +6,7 @@
   "main": "server.mjs",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && cd strapi && npm run build",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.mjs",
