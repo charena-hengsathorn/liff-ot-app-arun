@@ -23,6 +23,7 @@ function ManagerView() {
   const [pendingDeleteAction, setPendingDeleteAction] = useState(null);
 
   // API Configuration
+  // Only use localhost if we're actually running on localhost (for local development)
   const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const API_BASE_URL = isLocalDev
     ? 'http://localhost:3001'

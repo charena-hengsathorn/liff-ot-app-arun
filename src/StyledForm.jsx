@@ -1187,9 +1187,10 @@ function StyledForm() {
   const formatComments = (value) => value ? value : "Add Comments";
 
   // API Configuration - Heroku backend
-  // Use localhost if we're running locally, regardless of UI env setting
+  // Only use localhost if we're actually running on localhost (for local development)
+  // The environment toggle (DEV/PROD button) should NOT affect backend URL, only which spreadsheet to use
   const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const API_BASE_URL = (isLocalDev || getEffectiveUIEnv() === 'dev')
+  const API_BASE_URL = isLocalDev
     ? 'http://localhost:3001'
     : 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
 
