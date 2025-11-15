@@ -1974,9 +1974,9 @@ app.use('/admin', createProxyMiddleware({
   changeOrigin: true,
   ws: true,
   logLevel: 'debug',
-  // Express strips /admin, so we need to add it back
+  // Express strips /admin, so we prepend it back
   pathRewrite: {
-    '^/admin': '/admin', // Add /admin back since Express strips it
+    '^/': '/admin/', // Express gives us '/', we need '/admin/'
   },
   onProxyReq: (proxyReq, req, res) => {
     console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to Strapi`);
