@@ -715,7 +715,8 @@ function StyledForm() {
 
   // Load available sheets for manual testing when environment changes
   useEffect(() => {
-    if (getEffectiveUIEnv() === 'dev' && manualTestData.testEnvironment) {
+    // Always fetch sheets when test environment changes (works for both dev and prod UI)
+    if (manualTestData.testEnvironment) {
       fetchManualTestSheets(manualTestData.testEnvironment);
     }
   }, [manualTestData.testEnvironment]);
@@ -2268,6 +2269,7 @@ function StyledForm() {
   // Fetch available sheets for manual testing
   const fetchManualTestSheets = async (environment) => {
     try {
+      console.log(`📋 Fetching sheets for ${environment} environment...`);
       const response = await fetch(`${API_BASE_URL}/get-sheets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2276,16 +2278,20 @@ function StyledForm() {
       
       if (response.ok) {
         const result = await response.json();
+        console.log(`✅ Fetched ${result.sheets?.length || 0} sheets for ${environment}:`, result.sheets);
         setManualTestData(prev => ({
           ...prev,
           availableSheets: result.sheets || [],
           testSpreadsheet: '' // Clear selection when environment changes
         }));
       } else {
-        showAlert('❌ Failed to fetch available sheets for manual testing', 'error');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error(`❌ Failed to fetch sheets for ${environment}:`, errorData);
+        showAlert(`❌ Failed to fetch available sheets for ${environment}: ${errorData.error || 'Unknown error'}`, 'error');
       }
     } catch (error) {
-      showAlert(`❌ Error fetching sheets for manual testing: ${error.message}`, 'error');
+      console.error(`❌ Error fetching sheets for ${environment}:`, error);
+      showAlert(`❌ Error fetching sheets for ${environment}: ${error.message}`, 'error');
     }
   };
 

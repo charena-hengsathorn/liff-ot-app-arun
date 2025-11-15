@@ -827,11 +827,17 @@ app.post('/get-sheets', async (req, res) => {
       return res.status(400).json({ error: `No spreadsheet ID configured for ${environment} environment` });
     }
 
+    console.log(`📋 Fetching sheets for ${environment} environment`);
+    console.log(`📋 Using spreadsheet ID: ${spreadsheetId}`);
+
     const { google } = await import('googleapis');
+    const { existsSync } = await import('fs');
 
     const auth = new google.auth.GoogleAuth({
-      credentials: process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, 'base64').toString()) : undefined,
-      keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || './google-credentials.json',
+      credentials: process.env.GOOGLE_SERVICE_ACCOUNT_KEY 
+        ? JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, 'base64').toString()) 
+        : undefined,
+      keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || (existsSync('./google-credentials.json') ? './google-credentials.json' : undefined),
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
@@ -842,10 +848,12 @@ app.post('/get-sheets', async (req, res) => {
     });
 
     const sheetNames = response.data.sheets.map(sheet => sheet.properties.title);
+    console.log(`✅ Found ${sheetNames.length} sheets for ${environment}:`, sheetNames);
 
     res.json({ sheets: sheetNames });
   } catch (error) {
-    console.error('❌ Error fetching sheets:', error);
+    console.error(`❌ Error fetching sheets for ${environment}:`, error);
+    console.error(`❌ Error details:`, error.message);
     res.status(500).json({ error: `Failed to fetch sheets: ${error.message}` });
   }
 });
