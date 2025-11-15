@@ -2103,7 +2103,8 @@ function StyledForm() {
         env: manualTestData.testEnvironment || 'dev',
         action: 'submitWithClockTimes',
         language: browserLang,
-        isManualTest: true // Flag to identify manual test entries
+        isManualTest: true, // Flag to identify manual test entries
+        targetSheetName: manualTestData.testSpreadsheet || null // Pass selected sheet name for manual tests
       };
 
       console.log('🧪 Sending manual test data:', payload);

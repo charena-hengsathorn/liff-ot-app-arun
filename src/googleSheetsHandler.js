@@ -227,7 +227,19 @@ export async function submitWithClockTimes(data) {
       language = 'en'
     } = data;
 
+    console.log(`📝 submitWithClockTimes called for ${env} environment`);
+    console.log(`📝 Driver: ${driverName}, Date: ${thaiDate}, Clock In: ${clockIn}, Clock Out: ${clockOut}`);
+    
     const spreadsheetId = getSpreadsheetId(env);
+    if (!spreadsheetId) {
+      console.error(`❌ No spreadsheet ID found for ${env} environment`);
+      return {
+        success: false,
+        error: `No spreadsheet ID configured for ${env} environment`
+      };
+    }
+    console.log(`📊 Using spreadsheet ID: ${spreadsheetId} for ${env} environment`);
+    
     const submittedAt = getBangkokTime();
 
     // Calculate OT hours if clock out time is provided and after 17:00
@@ -306,9 +318,13 @@ export async function submitWithClockTimes(data) {
       }
     }
 
-    // Check for existing entry
-    const existingCheck = await checkExistingEntry(driverName, thaiDate, env);
-    const targetSheetName = getSheetNameFromDate(thaiDate);
+    // For manual tests, use the provided targetSheetName; otherwise calculate from date
+    const targetSheetName = data.targetSheetName || getSheetNameFromDate(thaiDate);
+    
+    console.log(`📊 Using sheet: "${targetSheetName}" (${data.targetSheetName ? 'manually specified' : 'calculated from date'})`);
+
+    // Check for existing entry (pass targetSheetName for manual tests)
+    const existingCheck = await checkExistingEntry(driverName, thaiDate, env, targetSheetName);
 
     // Detect sheet structure to determine column positions
     const hasNewStructure = await detectSheetStructure(spreadsheetId, targetSheetName);
@@ -443,6 +459,7 @@ export async function submitWithClockTimes(data) {
         calculatedOTHours || '' // OT Hours (calculated)
       ];
 
+      console.log(`📝 Appending new row to sheet "${targetSheetName}" in ${env} environment`);
       await sheets.spreadsheets.values.append({
         spreadsheetId,
         range: formatSheetRange(targetSheetName, hasNewStructure ? 'A:K' : 'A:J'),
@@ -452,6 +469,8 @@ export async function submitWithClockTimes(data) {
           values: [newRow]
         }
       });
+
+      console.log(`✅ Successfully appended row to sheet "${targetSheetName}"`);
 
       return {
         success: true,
@@ -1079,14 +1098,15 @@ export async function getRowBySubmittedAt(submittedAt, env = 'prod', thaiDate = 
 
 // Optimized: Check if entry exists AND get row data in one call
 // This replaces the two-call pattern (checkExisting + getRowByDriverAndDate)
-export async function checkAndGetRowByDriverAndDate(driverName, thaiDate, env = 'prod', language = 'en') {
+export async function checkAndGetRowByDriverAndDate(driverName, thaiDate, env = 'prod', language = 'en', targetSheetName = null) {
   try {
     const spreadsheetId = getSpreadsheetId(env);
-    const targetSheetName = getSheetNameFromDate(thaiDate);
+    // Use provided targetSheetName (for manual tests) or calculate from date
+    const sheetName = targetSheetName || getSheetNameFromDate(thaiDate);
 
     // Detect sheet structure (1 API call)
-    const hasNewStructure = await detectSheetStructure(spreadsheetId, targetSheetName);
-    const range = formatSheetRange(targetSheetName, hasNewStructure ? 'A:K' : 'A:J');
+    const hasNewStructure = await detectSheetStructure(spreadsheetId, sheetName);
+    const range = formatSheetRange(sheetName, hasNewStructure ? 'A:K' : 'A:J');
 
     // Get all data in one call (1 API call)
     const response = await sheets.spreadsheets.values.get({
@@ -1122,7 +1142,7 @@ export async function checkAndGetRowByDriverAndDate(driverName, thaiDate, env = 
             exists: true,
             row,
             rowIndex: i + 1,
-            targetSheetName,
+            targetSheetName: sheetName,
             hasNewStructure
           };
         } else {
@@ -1139,13 +1159,13 @@ export async function checkAndGetRowByDriverAndDate(driverName, thaiDate, env = 
             rawRow[8] || '', // OT Hours (was I, now J)
             rawRow[9] || ''  // Approval (was J, now K)
           ];
-
+          
           return {
             success: true,
             exists: true,
             row,
             rowIndex: i + 1,
-            targetSheetName,
+            targetSheetName: sheetName,
             hasNewStructure
           };
         }
@@ -1190,8 +1210,8 @@ export async function getRowByDriverAndDate(driverName, thaiDate, env = 'prod', 
 }
 
 // Legacy function - now optimized to use checkAndGetRowByDriverAndDate
-export async function checkExistingEntry(driverName, thaiDate, env = 'prod') {
-  const result = await checkAndGetRowByDriverAndDate(driverName, thaiDate, env, 'en');
+export async function checkExistingEntry(driverName, thaiDate, env = 'prod', targetSheetName = null) {
+  const result = await checkAndGetRowByDriverAndDate(driverName, thaiDate, env, 'en', targetSheetName);
 
   return {
     success: result.success,
