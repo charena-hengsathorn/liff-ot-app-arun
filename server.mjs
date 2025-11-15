@@ -108,6 +108,12 @@ setupAuthRoutes(app, {
   strapiUrl: STRAPI_URL
 });
 
+// GET /login - serve React app (POST /login is handled by setupAuthRoutes)
+app.get('/login', (req, res) => {
+  console.log('=== LOGIN PAGE: Serving React app ===');
+  res.sendFile('dist/index.html', { root: '.' });
+});
+
 // LINE Messaging API configuration
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const LINE_GROUP_ID_DEV = process.env.LINE_GROUP_ID_DEV;
@@ -1931,14 +1937,14 @@ const strapiProxy = createProxyMiddleware({
       const location = proxyRes.headers.location;
       if (location) {
         const publicUrl = 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
-        
+
         // If redirecting to /admin from /admin, it's a loop - don't rewrite
         if (location === '/admin' && req.path === '/admin') {
           console.log(`[Strapi Proxy] Detected redirect loop: ${req.path} -> ${location}, allowing redirect`);
           // Keep the redirect but it will be handled by the browser
           return;
         }
-        
+
         // If Strapi redirects to its own URL, rewrite it to use the proxy path
         if (location.startsWith(publicUrl)) {
           // Keep the redirect as-is (it's already pointing to the public URL)
@@ -1962,7 +1968,53 @@ const strapiProxy = createProxyMiddleware({
 });
 
 // Proxy Strapi admin panel (all HTTP methods)
-app.use('/admin', strapiProxy);
+// Use pathRewrite to ensure Strapi receives the correct path
+app.use('/admin', createProxyMiddleware({
+  target: 'http://localhost:1337',
+  changeOrigin: true,
+  ws: true,
+  logLevel: 'debug',
+  pathRewrite: {
+    '^/admin': '/admin', // Keep the /admin path
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to Strapi`);
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    // Rewrite redirect Location headers to use the proxy path
+    if (proxyRes.statusCode === 302 || proxyRes.statusCode === 301) {
+      const location = proxyRes.headers.location;
+      if (location) {
+        const publicUrl = 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
+        
+        // If redirecting to /admin from /admin, check if it's a sub-path redirect
+        if (location === '/admin' && req.path === '/admin') {
+          // This is a loop - Strapi might be redirecting to login
+          // Try redirecting to /admin/auth/login instead
+          console.log(`[Strapi Proxy] Detected /admin -> /admin redirect, checking if login needed`);
+          // Let the browser handle it - it might be redirecting to /admin/auth/login
+          return;
+        }
+        
+        // If Strapi redirects to its own URL, rewrite it to use the proxy path
+        if (location.startsWith(publicUrl)) {
+          console.log(`[Strapi Proxy] Redirect: ${location}`);
+        } else if (location.startsWith('http://localhost:1337')) {
+          const newLocation = location.replace('http://localhost:1337', '');
+          proxyRes.headers.location = `${publicUrl}${newLocation}`;
+          console.log(`[Strapi Proxy] Rewrote redirect: ${location} -> ${proxyRes.headers.location}`);
+        } else if (location.startsWith('/')) {
+          // Relative redirects - keep them relative
+          console.log(`[Strapi Proxy] Relative redirect: ${location}`);
+        }
+      }
+    }
+  },
+  onError: (err, req, res) => {
+    console.error('[Strapi Proxy] Error:', err.message);
+    res.status(503).json({ error: 'Strapi service unavailable' });
+  }
+}));
 
 // Proxy Strapi API routes (but not Express /api root)
 // Only proxy if it's a Strapi-specific API route
