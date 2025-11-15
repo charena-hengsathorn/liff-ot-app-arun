@@ -1,7 +1,12 @@
 // Script to reset Strapi admin password
 // Usage: node reset-admin-password.js <email> <new-password>
 
-const path = require('path');
+import path from 'path';
+import { fileURLToPath } from 'url';
+import Strapi from '@strapi/strapi';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function resetPassword() {
   const email = process.argv[2];
@@ -18,12 +23,9 @@ async function resetPassword() {
   // Change to strapi directory
   process.chdir(path.join(__dirname, 'strapi'));
 
-  // Load Strapi
-  const strapi = require('@strapi/strapi');
-
   try {
     // Start Strapi instance
-    const instance = await strapi({
+    const instance = await Strapi({
       distDir: './dist',
       autoReload: false,
       serveAdminPanel: false
