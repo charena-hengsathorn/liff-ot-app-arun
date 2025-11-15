@@ -1426,7 +1426,8 @@ app.get('/api/drivers/manager-view', async (req, res) => {
     console.log(`[Manager View] Fetching drivers from Strapi: ${STRAPI_URL}/api/drivers?populate=*`);
 
     // Fetch all drivers with populated relations
-    const driversResponse = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
+    // Use deep populate for photo field in Strapi v5
+    const driversResponse = await fetch(`${STRAPI_URL}/api/drivers?populate[photo][populate]=*&populate=*`, {
       headers: {
         'Content-Type': 'application/json'
       }
@@ -1454,16 +1455,29 @@ app.get('/api/drivers/manager-view', async (req, res) => {
     const driversWithInfo = await Promise.all(
       driversArray.map(async (driver) => {
         console.log(`[Manager View] Processing driver: ${driver.id}, name: ${driver.attributes?.name || driver.name}`);
+        
+        // Handle both Strapi v4 (with attributes) and v5 (without attributes) formats
+        const driverPhoto = driver.attributes?.photo || driver.photo;
+        const photoData = driverPhoto?.data || (driverPhoto && typeof driverPhoto === 'object' && !driverPhoto.data ? driverPhoto : null);
+        
         // Build photo URL - prepend Strapi URL if it's a relative path
         let photoUrl = null;
-        if (driver.attributes?.photo?.data) {
-          const photoData = driver.attributes.photo.data;
-          const photoPath = photoData.attributes?.url || photoData.url || photoData.attributes?.formats?.thumbnail?.url || photoData.formats?.thumbnail?.url;
+        if (photoData) {
+          // Try multiple possible paths for photo URL
+          const photoPath = photoData.attributes?.url 
+            || photoData.url 
+            || photoData.attributes?.formats?.thumbnail?.url 
+            || photoData.formats?.thumbnail?.url
+            || photoData.attributes?.formats?.small?.url
+            || photoData.formats?.small?.url
+            || photoData.attributes?.formats?.medium?.url
+            || photoData.formats?.medium?.url;
           
           console.log(`[Manager View] Driver ${driver.id} photo data:`, {
-            hasData: !!driver.attributes?.photo?.data,
+            hasPhoto: !!driverPhoto,
+            hasPhotoData: !!photoData,
             photoPath: photoPath,
-            photoData: photoData
+            photoDataKeys: photoData ? Object.keys(photoData) : []
           });
           
           if (photoPath) {
@@ -1473,10 +1487,10 @@ app.get('/api/drivers/manager-view', async (req, res) => {
               : `${STRAPI_URL}${photoPath.startsWith('/') ? '' : '/'}${photoPath}`;
             console.log(`[Manager View] Driver ${driver.id} photo URL: ${photoUrl}`);
           } else {
-            console.log(`[Manager View] Driver ${driver.id} has photo data but no URL path found`);
+            console.log(`[Manager View] Driver ${driver.id} has photo data but no URL path found. Photo data structure:`, JSON.stringify(photoData, null, 2));
           }
         } else {
-          console.log(`[Manager View] Driver ${driver.id} has no photo data`);
+          console.log(`[Manager View] Driver ${driver.id} has no photo data. Driver photo field:`, driverPhoto);
         }
 
         const driverInfo = {
@@ -1485,7 +1499,7 @@ app.get('/api/drivers/manager-view', async (req, res) => {
           age: driver.attributes?.age || driver.age || null,
           createdAt: driver.attributes?.createdAt || driver.createdAt || null,
           photo: photoUrl ? {
-            id: driver.attributes.photo.data.id,
+            id: photoData.id || photoData.documentId || driver.id,
             url: photoUrl
           } : null,
           user: null,
