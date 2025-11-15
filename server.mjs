@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { handleGoogleSheetsRequest, createMonthlySheet, readLoginHistoryFromSheet, getLastClockInForDriver, getLastClockInsForDrivers } from './src/googleSheetsHandler.js';
 import { setupAuthRoutes } from './src/login/authRoutes.js';
 
@@ -1911,6 +1912,41 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
       error: error.message
     });
   }
+});
+
+// Proxy Strapi admin and API routes to Strapi (running on localhost:1337)
+// This must be BEFORE the catch-all route
+const strapiProxy = createProxyMiddleware({
+  target: 'http://localhost:1337',
+  changeOrigin: true,
+  ws: true, // Enable websocket proxying for Strapi admin
+  logLevel: 'debug',
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to Strapi`);
+  },
+  onError: (err, req, res) => {
+    console.error('[Strapi Proxy] Error:', err.message);
+    res.status(503).json({ error: 'Strapi service unavailable' });
+  }
+});
+
+// Proxy Strapi admin panel (all HTTP methods)
+app.use('/admin', strapiProxy);
+
+// Proxy Strapi API routes (but not Express /api root)
+// Only proxy if it's a Strapi-specific API route
+app.use('/api', (req, res, next) => {
+  // Check if this is a Strapi API route (has content type in path like /api/drivers, /api/attendances, etc.)
+  const strapiApiRoutes = ['/api/drivers', '/api/attendances', '/api/login', '/api/month', '/api/upload', '/api/auth', '/api/users-permissions'];
+  const isStrapiRoute = strapiApiRoutes.some(route => req.path.startsWith(route));
+  
+  if (isStrapiRoute) {
+    console.log(`[Strapi Proxy] Proxying Strapi API: ${req.path}`);
+    return strapiProxy(req, res, next);
+  }
+  
+  // Otherwise, let Express handle it
+  next();
 });
 
 // Simple catch-all route for SPA - MUST BE LAST (after all API routes)
