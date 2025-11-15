@@ -190,12 +190,12 @@ app.post('/api/create-user-temp', async (req, res) => {
     );
     const roleId = roleResult.rows[0]?.id || 1;
 
-    // Insert user
+    // Insert user (Strapi v5 schema)
     const result = await client.query(
-      `INSERT INTO up_users (username, email, password, confirmed, blocked, role, provider, created_at, updated_at, created_by_id, updated_by_id)
-       VALUES ($1, $2, $3, true, false, $4, 'local', NOW(), NOW(), 1, 1)
+      `INSERT INTO up_users (username, email, password, confirmed, blocked, provider, created_at, updated_at, published_at, created_by_id, updated_by_id)
+       VALUES ($1, $2, $3, true, false, 'local', NOW(), NOW(), NOW(), 1, 1)
        RETURNING id, username, email`,
-      [username, email, hashedPassword, roleId]
+      [username, email, hashedPassword]
     );
 
     await client.end();
