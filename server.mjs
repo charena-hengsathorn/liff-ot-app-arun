@@ -51,13 +51,32 @@ const allowedOrigins = [
   'http://localhost:3000', // Alternative dev port
   'https://liff-ot-app-positive.vercel.app', // Legacy Vercel frontend
   'https://liff-ot-app-positive.herokuapp.com', // Legacy Heroku frontend
-  'https://liff-ot-app-arun.vercel.app', // New Vercel frontend
-  'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app' // Vercel deployment preview
+  'https://liff-ot-app-arun.vercel.app', // New Vercel frontend (production)
+  'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app' // Vercel deployment preview (specific)
 ];
+
+// Vercel preview URL patterns (for dynamic branch/PR previews)
+const vercelPreviewPatterns = [
+  /^https:\/\/liff-ot-app-arun-.*\.vercel\.app$/, // Any Vercel preview for liff-ot-app-arun
+  /^https:\/\/liff-ot-app-positive-.*\.vercel\.app$/, // Legacy previews
+];
+
+// Check if origin is allowed (exact match or pattern match)
+function isOriginAllowed(origin) {
+  if (!origin) return false;
+
+  // Check exact matches first
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  // Check Vercel preview patterns
+  return vercelPreviewPatterns.some(pattern => pattern.test(origin));
+}
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
+  if (origin && isOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
@@ -66,7 +85,7 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Expose-Headers', 'Content-Range, X-Content-Range');
   res.setHeader('Access-Control-Max-Age', '86400');
   if (req.method === 'OPTIONS') {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || isOriginAllowed(origin)) {
       return res.status(204).end();
     }
     return res.status(403).end();
@@ -2002,12 +2021,44 @@ if (isLocalStrapi) {
     changeOrigin: true,
     ws: true,
     logLevel: 'debug',
-    // Express strips /admin, so we prepend it back
-    pathRewrite: {
-      '^/': '/admin/', // Express gives us '/', we need '/admin/'
+    timeout: 25000, // 25 seconds (slightly less than Heroku's 30s timeout)
+    proxyTimeout: 25000,
+    // Express strips /admin prefix, so we need to reconstruct the full path
+    // For /admin/login → Express gives us /login → We need /admin/login
+    pathRewrite: (path, req) => {
+      const originalPath = req.originalUrl || req.url;
+      // If the path starts with /admin, it was stripped - add it back
+      if (!path.startsWith('/admin')) {
+        const newPath = `/admin${path}`;
+        console.log(`[Strapi Proxy] Rewriting path: ${path} → ${newPath} (original: ${originalPath})`);
+        return newPath;
+      }
+      return path;
     },
     onProxyReq: (proxyReq, req, res) => {
-      console.log(`[Strapi Proxy] Proxying admin ${req.method} ${req.path} to ${strapiTarget}/admin/`);
+      const targetPath = proxyReq.path;
+      console.log(`[Strapi Proxy] Proxying admin ${req.method} ${req.path} to ${strapiTarget}${targetPath}`);
+      console.log(`[Strapi Proxy] Original URL: ${req.originalUrl || req.url}`);
+      
+      // Ensure Content-Type is set correctly for POST requests
+      if (req.method === 'POST' && req.body) {
+        if (!proxyReq.getHeader('content-type')) {
+          proxyReq.setHeader('content-type', 'application/json');
+        }
+      }
+      
+      // Set timeout on the proxy request (25 seconds, less than Heroku's 30s)
+      proxyReq.setTimeout(25000, () => {
+        console.error(`[Strapi Proxy] Proxy request timeout for ${req.method} ${req.path} → ${targetPath}`);
+        if (!res.headersSent) {
+          res.status(504).json({
+            error: 'Gateway timeout',
+            message: 'Strapi took too long to respond',
+            path: req.path,
+            targetPath: targetPath
+          });
+        }
+      });
     },
     onProxyRes: (proxyRes, req, res) => {
       // Rewrite redirect Location headers to use the proxy path
