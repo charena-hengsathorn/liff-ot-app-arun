@@ -1920,23 +1920,42 @@ app.post('/api/logins/sync-from-sheets', async (req, res) => {
   }
 });
 
-// Proxy Strapi admin and API routes to Strapi (running on localhost:1337)
-// This must be BEFORE the catch-all route
+// Determine if Strapi is running locally (on same server) or remotely (separate app)
+const isLocalStrapi = STRAPI_URL.includes('localhost') || STRAPI_URL.includes('127.0.0.1');
+const strapiTarget = STRAPI_URL.replace(/\/$/, ''); // Remove trailing slash
+
+console.log(`[Strapi Proxy] Strapi URL: ${STRAPI_URL}`);
+console.log(`[Strapi Proxy] Is local: ${isLocalStrapi}`);
+console.log(`[Strapi Proxy] Target: ${strapiTarget}`);
+
+// Get current server URL for redirect rewriting
+const getServerUrl = () => {
+  // Try to get from environment first
+  if (process.env.HEROKU_APP_NAME) {
+    return `https://${process.env.HEROKU_APP_NAME}.herokuapp.com`;
+  }
+  // Fallback: construct from request if available
+  return process.env.PUBLIC_URL || 'http://localhost:3001';
+};
+
+// Proxy Strapi admin and API routes to Strapi
+// Only proxy if Strapi is running locally (same server)
+// If Strapi is remote, redirect to it directly
 const strapiProxy = createProxyMiddleware({
-  target: 'http://localhost:1337',
+  target: strapiTarget,
   changeOrigin: true,
   ws: true, // Enable websocket proxying for Strapi admin
   logLevel: 'debug',
   followRedirects: false, // Don't follow redirects automatically
   onProxyReq: (proxyReq, req, res) => {
-    console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to Strapi`);
+    console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to ${strapiTarget}`);
   },
   onProxyRes: (proxyRes, req, res) => {
     // Rewrite redirect Location headers to use the proxy path
     if (proxyRes.statusCode === 302 || proxyRes.statusCode === 301) {
       const location = proxyRes.headers.location;
       if (location) {
-        const publicUrl = 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
+        const serverUrl = getServerUrl();
 
         // If redirecting to /admin from /admin, it's a loop - don't rewrite
         if (location === '/admin' && req.path === '/admin') {
@@ -1946,13 +1965,13 @@ const strapiProxy = createProxyMiddleware({
         }
 
         // If Strapi redirects to its own URL, rewrite it to use the proxy path
-        if (location.startsWith(publicUrl)) {
-          // Keep the redirect as-is (it's already pointing to the public URL)
+        if (location.startsWith(serverUrl)) {
+          // Keep the redirect as-is (it's already pointing to the server URL)
           console.log(`[Strapi Proxy] Redirect: ${location}`);
-        } else if (location.startsWith('http://localhost:1337')) {
-          // Rewrite localhost URLs to use the proxy path
-          const newLocation = location.replace('http://localhost:1337', '');
-          proxyRes.headers.location = `${publicUrl}${newLocation}`;
+        } else if (location.startsWith(strapiTarget)) {
+          // Rewrite Strapi URLs to use the proxy path
+          const newLocation = location.replace(strapiTarget, '');
+          proxyRes.headers.location = `${serverUrl}${newLocation}`;
           console.log(`[Strapi Proxy] Rewrote redirect: ${location} -> ${proxyRes.headers.location}`);
         } else if (location.startsWith('/')) {
           // Relative redirects - keep them relative (browser will resolve correctly)
@@ -1963,79 +1982,101 @@ const strapiProxy = createProxyMiddleware({
   },
   onError: (err, req, res) => {
     console.error('[Strapi Proxy] Error:', err.message);
-    res.status(503).json({ error: 'Strapi service unavailable' });
+    console.error('[Strapi Proxy] Strapi URL:', STRAPI_URL);
+    console.error('[Strapi Proxy] Is Strapi running? Check:', strapiTarget);
+    res.status(503).json({
+      error: 'Strapi service unavailable',
+      message: `Cannot connect to Strapi at ${strapiTarget}`,
+      strapiUrl: STRAPI_URL
+    });
   }
 });
 
 // Proxy Strapi admin panel (all HTTP methods)
-// Express strips /admin prefix, so we need to add it back for Strapi
-app.use('/admin', createProxyMiddleware({
-  target: 'http://localhost:1337',
-  changeOrigin: true,
-  ws: true,
-  logLevel: 'debug',
-  // Express strips /admin, so we prepend it back
-  pathRewrite: {
-    '^/': '/admin/', // Express gives us '/', we need '/admin/'
-  },
-  onProxyReq: (proxyReq, req, res) => {
-    console.log(`[Strapi Proxy] Proxying ${req.method} ${req.path} to Strapi`);
-  },
-  onProxyRes: (proxyRes, req, res) => {
-    // Rewrite redirect Location headers to use the proxy path
-    if (proxyRes.statusCode === 302 || proxyRes.statusCode === 301) {
-      const location = proxyRes.headers.location;
-      if (location) {
-        const publicUrl = 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
+// Only proxy if Strapi is running locally
+// If Strapi is remote, redirect to it directly
+if (isLocalStrapi) {
+  // Express strips /admin prefix, so we need to add it back for Strapi
+  app.use('/admin', createProxyMiddleware({
+    target: strapiTarget,
+    changeOrigin: true,
+    ws: true,
+    logLevel: 'debug',
+    // Express strips /admin, so we prepend it back
+    pathRewrite: {
+      '^/': '/admin/', // Express gives us '/', we need '/admin/'
+    },
+    onProxyReq: (proxyReq, req, res) => {
+      console.log(`[Strapi Proxy] Proxying admin ${req.method} ${req.path} to ${strapiTarget}/admin/`);
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      // Rewrite redirect Location headers to use the proxy path
+      if (proxyRes.statusCode === 302 || proxyRes.statusCode === 301) {
+        const location = proxyRes.headers.location;
+        if (location) {
+          const serverUrl = getServerUrl();
 
-        // If redirecting to /admin from /admin, break the loop
-        if (location === '/admin' && req.path === '/admin') {
-          // This is a redirect loop - Strapi is redirecting /admin to /admin
-          // Break the loop by not following the redirect - let the response go through
-          // The browser will handle the redirect, but we prevent infinite loops
-          console.log(`[Strapi Proxy] Breaking redirect loop: /admin -> /admin`);
-          // Remove the Location header to break the loop, or change it to a specific page
-          // Actually, let's try redirecting to /admin/auth/login instead
-          proxyRes.headers.location = '/admin/auth/login';
-          console.log(`[Strapi Proxy] Changed redirect to: /admin/auth/login`);
-          return;
-        }
+          // If redirecting to /admin from /admin, break the loop
+          if (location === '/admin' && req.path === '/admin') {
+            // This is a redirect loop - Strapi is redirecting /admin to /admin
+            // Break the loop by redirecting to the login page
+            console.log(`[Strapi Proxy] Breaking redirect loop: /admin -> /admin`);
+            proxyRes.headers.location = '/admin/auth/login';
+            console.log(`[Strapi Proxy] Changed redirect to: /admin/auth/login`);
+            return;
+          }
 
-        // If Strapi redirects to its own URL, rewrite it to use the proxy path
-        if (location.startsWith(publicUrl)) {
-          console.log(`[Strapi Proxy] Redirect: ${location}`);
-        } else if (location.startsWith('http://localhost:1337')) {
-          const newLocation = location.replace('http://localhost:1337', '');
-          proxyRes.headers.location = `${publicUrl}${newLocation}`;
-          console.log(`[Strapi Proxy] Rewrote redirect: ${location} -> ${proxyRes.headers.location}`);
-        } else if (location.startsWith('/')) {
-          // Relative redirects - keep them relative
-          console.log(`[Strapi Proxy] Relative redirect: ${location}`);
+          // If Strapi redirects to its own URL, rewrite it to use the proxy path
+          if (location.startsWith(serverUrl)) {
+            console.log(`[Strapi Proxy] Redirect: ${location}`);
+          } else if (location.startsWith(strapiTarget)) {
+            const newLocation = location.replace(strapiTarget, '');
+            proxyRes.headers.location = `${serverUrl}${newLocation}`;
+            console.log(`[Strapi Proxy] Rewrote redirect: ${location} -> ${proxyRes.headers.location}`);
+          } else if (location.startsWith('/')) {
+            // Relative redirects - keep them relative
+            console.log(`[Strapi Proxy] Relative redirect: ${location}`);
+          }
         }
       }
+    },
+    onError: (err, req, res) => {
+      console.error('[Strapi Proxy] Admin proxy error:', err.message);
+      console.error('[Strapi Proxy] Strapi URL:', STRAPI_URL);
+      res.status(503).json({
+        error: 'Strapi admin service unavailable',
+        message: `Cannot connect to Strapi at ${strapiTarget}`,
+        strapiUrl: STRAPI_URL
+      });
     }
-  },
-  onError: (err, req, res) => {
-    console.error('[Strapi Proxy] Error:', err.message);
-    res.status(503).json({ error: 'Strapi service unavailable' });
-  }
-}));
+  }));
+} else {
+  // Strapi is running on a remote server - redirect /admin to it directly
+  app.use('/admin', (req, res) => {
+    const adminUrl = `${strapiTarget}/admin${req.path === '/admin' ? '' : req.path}`;
+    console.log(`[Strapi Proxy] Redirecting /admin to remote Strapi: ${adminUrl}`);
+    res.redirect(adminUrl);
+  });
+}
 
 // Proxy Strapi API routes (but not Express /api root)
-// Only proxy if it's a Strapi-specific API route
-app.use('/api', (req, res, next) => {
-  // Check if this is a Strapi API route (has content type in path like /api/drivers, /api/attendances, etc.)
-  const strapiApiRoutes = ['/api/drivers', '/api/attendances', '/api/login', '/api/month', '/api/upload', '/api/auth', '/api/users-permissions'];
-  const isStrapiRoute = strapiApiRoutes.some(route => req.path.startsWith(route));
+// Only proxy if Strapi is running locally AND it's a Strapi-specific API route
+// If Strapi is remote, API calls should go directly to it (no proxy needed)
+if (isLocalStrapi) {
+  app.use('/api', (req, res, next) => {
+    // Check if this is a Strapi API route (has content type in path like /api/drivers, /api/attendances, etc.)
+    const strapiApiRoutes = ['/api/drivers', '/api/attendances', '/api/login', '/api/month', '/api/upload', '/api/auth', '/api/users-permissions'];
+    const isStrapiRoute = strapiApiRoutes.some(route => req.path.startsWith(route));
 
-  if (isStrapiRoute) {
-    console.log(`[Strapi Proxy] Proxying Strapi API: ${req.path}`);
-    return strapiProxy(req, res, next);
-  }
+    if (isStrapiRoute) {
+      console.log(`[Strapi Proxy] Proxying Strapi API: ${req.path}`);
+      return strapiProxy(req, res, next);
+    }
 
-  // Otherwise, let Express handle it
-  next();
-});
+    // Otherwise, let Express handle it
+    next();
+  });
+}
 
 // Simple catch-all route for SPA - MUST BE LAST (after all API routes)
 app.get('*', (req, res) => {
