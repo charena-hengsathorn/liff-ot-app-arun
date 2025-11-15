@@ -9,7 +9,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "start:all": "concurrently \"npm run start:strapi\" \"npm run start:express\"",
+    "start:express": "node server.mjs",
+    "start:strapi": "cd strapi && npm start"
   },
   "dependencies": {
     "@line/liff": "^2.27.0",
@@ -19,6 +22,7 @@
     "@tailwindcss/cli": "^4.1.11",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "concurrently": "^9.2.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",
