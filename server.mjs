@@ -50,7 +50,9 @@ const allowedOrigins = [
   'http://localhost:5175', // Vite dev server (alternative)
   'http://localhost:3000', // Alternative dev port
   'https://liff-ot-app-arun.vercel.app', // Production Vercel frontend
-  'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app' // Vercel deployment preview (specific)
+  'https://liff-ot-app-arun-c4kr6e91j-charenas-projects.vercel.app', // Vercel deployment preview (specific)
+  'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com', // Heroku backend (for same-origin requests)
+  'https://liff-ot-app-raksaard-2d847d0ac48c.herokuapp.com' // Alternative Heroku app
 ];
 
 // Vercel preview URL patterns (for dynamic branch/PR previews)
@@ -2050,18 +2052,18 @@ if (isLocalStrapi) {
       console.log(`[Strapi Proxy] Original URL: ${req.originalUrl || req.url}`);
       console.log(`[Strapi Proxy] Content-Type: ${req.headers['content-type'] || 'none'}`);
       console.log(`[Strapi Proxy] Content-Length: ${req.headers['content-length'] || 'none'}`);
-      
+
       // Copy headers from original request
       const headers = {
         ...req.headers,
         'host': strapiTarget.replace(/^https?:\/\//, '').split(':')[0] // Set correct host
       };
-      
+
       // Ensure Content-Type is preserved
       if (req.headers['content-type']) {
         proxyReq.setHeader('content-type', req.headers['content-type']);
       }
-      
+
       // Set timeout on the proxy request (25 seconds, less than Heroku's 30s)
       proxyReq.setTimeout(25000, () => {
         console.error(`[Strapi Proxy] Proxy request timeout for ${req.method} ${req.path} → ${targetPath}`);
@@ -2074,7 +2076,7 @@ if (isLocalStrapi) {
           });
         }
       });
-      
+
       // Log if request has body data
       if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
         req.on('data', (chunk) => {
