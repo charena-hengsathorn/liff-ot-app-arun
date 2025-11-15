@@ -1426,8 +1426,8 @@ app.get('/api/drivers/manager-view', async (req, res) => {
     console.log(`[Manager View] Fetching drivers from Strapi: ${STRAPI_URL}/api/drivers?populate=*`);
 
     // Fetch all drivers with populated relations
-    // Use deep populate for photo field in Strapi v5
-    const driversResponse = await fetch(`${STRAPI_URL}/api/drivers?populate[photo][populate]=*&populate=*`, {
+    // Use proper Strapi v5 populate syntax - populate=* should be enough for all fields including media
+    const driversResponse = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
       headers: {
         'Content-Type': 'application/json'
       }
@@ -1455,31 +1455,31 @@ app.get('/api/drivers/manager-view', async (req, res) => {
     const driversWithInfo = await Promise.all(
       driversArray.map(async (driver) => {
         console.log(`[Manager View] Processing driver: ${driver.id}, name: ${driver.attributes?.name || driver.name}`);
-        
+
         // Handle both Strapi v4 (with attributes) and v5 (without attributes) formats
         const driverPhoto = driver.attributes?.photo || driver.photo;
         const photoData = driverPhoto?.data || (driverPhoto && typeof driverPhoto === 'object' && !driverPhoto.data ? driverPhoto : null);
-        
+
         // Build photo URL - prepend Strapi URL if it's a relative path
         let photoUrl = null;
         if (photoData) {
           // Try multiple possible paths for photo URL
-          const photoPath = photoData.attributes?.url 
-            || photoData.url 
-            || photoData.attributes?.formats?.thumbnail?.url 
+          const photoPath = photoData.attributes?.url
+            || photoData.url
+            || photoData.attributes?.formats?.thumbnail?.url
             || photoData.formats?.thumbnail?.url
             || photoData.attributes?.formats?.small?.url
             || photoData.formats?.small?.url
             || photoData.attributes?.formats?.medium?.url
             || photoData.formats?.medium?.url;
-          
+
           console.log(`[Manager View] Driver ${driver.id} photo data:`, {
             hasPhoto: !!driverPhoto,
             hasPhotoData: !!photoData,
             photoPath: photoPath,
             photoDataKeys: photoData ? Object.keys(photoData) : []
           });
-          
+
           if (photoPath) {
             // If it's already a full URL, use it; otherwise prepend Strapi URL
             photoUrl = photoPath.startsWith('http')
