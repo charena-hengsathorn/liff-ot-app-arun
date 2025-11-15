@@ -17,4 +17,7 @@ export default ({ env }) => ({
     nps: env.bool('FLAG_NPS', true),
     promoteEE: env.bool('FLAG_PROMOTE_EE', true),
   },
+  // Set admin panel URL for production (Heroku)
+  // Only set if PUBLIC_ADMIN_URL is defined (prevents localhost issues)
+  url: env('PUBLIC_ADMIN_URL') || undefined,
 });
