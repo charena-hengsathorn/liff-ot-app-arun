@@ -1988,12 +1988,16 @@ app.use('/admin', createProxyMiddleware({
       if (location) {
         const publicUrl = 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
 
-        // If redirecting to /admin from /admin, check if it's a sub-path redirect
+        // If redirecting to /admin from /admin, break the loop
         if (location === '/admin' && req.path === '/admin') {
-          // This is a loop - Strapi might be redirecting to login
-          // Try redirecting to /admin/auth/login instead
-          console.log(`[Strapi Proxy] Detected /admin -> /admin redirect, checking if login needed`);
-          // Let the browser handle it - it might be redirecting to /admin/auth/login
+          // This is a redirect loop - Strapi is redirecting /admin to /admin
+          // Break the loop by not following the redirect - let the response go through
+          // The browser will handle the redirect, but we prevent infinite loops
+          console.log(`[Strapi Proxy] Breaking redirect loop: /admin -> /admin`);
+          // Remove the Location header to break the loop, or change it to a specific page
+          // Actually, let's try redirecting to /admin/auth/login instead
+          proxyRes.headers.location = '/admin/auth/login';
+          console.log(`[Strapi Proxy] Changed redirect to: /admin/auth/login`);
           return;
         }
 
