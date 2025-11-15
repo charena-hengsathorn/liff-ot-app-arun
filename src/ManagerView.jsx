@@ -21,6 +21,8 @@ function ManagerView() {
   const [modalMessage, setModalMessage] = useState('');
   const [modalType, setModalType] = useState('info'); // 'info', 'success', 'error'
   const [pendingDeleteAction, setPendingDeleteAction] = useState(null);
+  // Track which driver images failed to load
+  const [failedImages, setFailedImages] = useState(new Set());
 
   // API Configuration
   // Only use localhost if we're actually running on localhost (for local development)
@@ -731,8 +733,8 @@ function ManagerView() {
                             </div>
                           ) : 'Never'}
                         </td>
-                        <td style={{ padding: '12px' }}>
-                          {driver.photo?.url ? (
+                        <td style={{ padding: '12px', position: 'relative' }}>
+                          {driver.photo?.url && !failedImages.has(driver.id) ? (
                             <img
                               src={driver.photo.url}
                               alt={driver.name}
@@ -742,17 +744,22 @@ function ManagerView() {
                                 borderRadius: '8px',
                                 objectFit: 'cover',
                                 border: `2px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
-                                boxShadow: isDarkMode ? '0 2px 4px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.1)'
+                                boxShadow: isDarkMode ? '0 2px 4px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
+                                display: 'block'
                               }}
                               onError={(e) => {
+                                console.error(`[ManagerView] Image failed to load for driver ${driver.id}:`, driver.photo.url);
+                                setFailedImages(prev => new Set(prev).add(driver.id));
                                 e.target.style.display = 'none';
-                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                              onLoad={() => {
+                                console.log(`[ManagerView] Image loaded successfully for driver ${driver.id}:`, driver.photo.url);
                               }}
                             />
                           ) : null}
                           <div
                             style={{
-                              display: driver.photo?.url ? 'none' : 'flex',
+                              display: (!driver.photo?.url || failedImages.has(driver.id)) ? 'flex' : 'none',
                               width: '50px',
                               height: '50px',
                               borderRadius: '8px',
@@ -762,7 +769,8 @@ function ManagerView() {
                               color: isDarkMode ? '#94a3b8' : '#64748b',
                               fontSize: '20px',
                               fontWeight: 600,
-                              border: `2px solid ${isDarkMode ? '#475569' : '#cbd5e1'}`
+                              border: `2px solid ${isDarkMode ? '#475569' : '#cbd5e1'}`,
+                              position: 'relative'
                             }}
                           >
                             {driver.name ? driver.name.charAt(0).toUpperCase() : '?'}
@@ -819,43 +827,50 @@ function ManagerView() {
                             style={{ cursor: 'pointer', marginTop: '4px' }}
                           />
                         )}
-                        {driver.photo?.url ? (
-                          <img
-                            src={driver.photo.url}
-                            alt={driver.name}
+                        <div style={{ position: 'relative', flexShrink: 0 }}>
+                          {driver.photo?.url && !failedImages.has(driver.id) ? (
+                            <img
+                              src={driver.photo.url}
+                              alt={driver.name}
+                              style={{
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '10px',
+                                objectFit: 'cover',
+                                border: `2px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
+                                boxShadow: isDarkMode ? '0 2px 4px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
+                                display: 'block'
+                              }}
+                              onError={(e) => {
+                                console.error(`[ManagerView] Image failed to load for driver ${driver.id}:`, driver.photo.url);
+                                setFailedImages(prev => new Set(prev).add(driver.id));
+                                e.target.style.display = 'none';
+                              }}
+                              onLoad={() => {
+                                console.log(`[ManagerView] Image loaded successfully for driver ${driver.id}:`, driver.photo.url);
+                              }}
+                            />
+                          ) : null}
+                          <div
                             style={{
+                              display: (!driver.photo?.url || failedImages.has(driver.id)) ? 'flex' : 'none',
                               width: '60px',
                               height: '60px',
                               borderRadius: '10px',
-                              objectFit: 'cover',
-                              border: `2px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
-                              boxShadow: isDarkMode ? '0 2px 4px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
-                              flexShrink: 0
+                              background: isDarkMode ? '#334155' : '#e2e8f0',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: isDarkMode ? '#94a3b8' : '#64748b',
+                              fontSize: '24px',
+                              fontWeight: 600,
+                              border: `2px solid ${isDarkMode ? '#475569' : '#cbd5e1'}`,
+                              position: 'absolute',
+                              top: 0,
+                              left: 0
                             }}
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              const placeholder = e.target.nextSibling;
-                              if (placeholder) placeholder.style.display = 'flex';
-                            }}
-                          />
-                        ) : null}
-                        <div
-                          style={{
-                            display: driver.photo?.url ? 'none' : 'flex',
-                            width: '60px',
-                            height: '60px',
-                            borderRadius: '10px',
-                            background: isDarkMode ? '#334155' : '#e2e8f0',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: isDarkMode ? '#94a3b8' : '#64748b',
-                            fontSize: '24px',
-                            fontWeight: 600,
-                            border: `2px solid ${isDarkMode ? '#475569' : '#cbd5e1'}`,
-                            flexShrink: 0
-                          }}
-                        >
-                          {driver.name ? driver.name.charAt(0).toUpperCase() : '?'}
+                          >
+                            {driver.name ? driver.name.charAt(0).toUpperCase() : '?'}
+                          </div>
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '4px', color: isDarkMode ? '#f1f5f9' : '#1f2937' }}>

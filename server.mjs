@@ -205,7 +205,7 @@ app.post('/api/admin/create-user', async (req, res) => {
     console.error('User creation error:', error);
     try {
       await client.end();
-    } catch (e) {}
+    } catch (e) { }
     res.status(500).json({
       success: false,
       error: error.message
@@ -834,8 +834,8 @@ app.post('/get-sheets', async (req, res) => {
     const { existsSync } = await import('fs');
 
     const auth = new google.auth.GoogleAuth({
-      credentials: process.env.GOOGLE_SERVICE_ACCOUNT_KEY 
-        ? JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, 'base64').toString()) 
+      credentials: process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+        ? JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, 'base64').toString())
         : undefined,
       keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || (existsSync('./google-credentials.json') ? './google-credentials.json' : undefined),
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -1457,13 +1457,26 @@ app.get('/api/drivers/manager-view', async (req, res) => {
         // Build photo URL - prepend Strapi URL if it's a relative path
         let photoUrl = null;
         if (driver.attributes?.photo?.data) {
-          const photoPath = driver.attributes.photo.data.attributes?.url || driver.attributes.photo.data.url;
+          const photoData = driver.attributes.photo.data;
+          const photoPath = photoData.attributes?.url || photoData.url || photoData.attributes?.formats?.thumbnail?.url || photoData.formats?.thumbnail?.url;
+          
+          console.log(`[Manager View] Driver ${driver.id} photo data:`, {
+            hasData: !!driver.attributes?.photo?.data,
+            photoPath: photoPath,
+            photoData: photoData
+          });
+          
           if (photoPath) {
             // If it's already a full URL, use it; otherwise prepend Strapi URL
             photoUrl = photoPath.startsWith('http')
               ? photoPath
               : `${STRAPI_URL}${photoPath.startsWith('/') ? '' : '/'}${photoPath}`;
+            console.log(`[Manager View] Driver ${driver.id} photo URL: ${photoUrl}`);
+          } else {
+            console.log(`[Manager View] Driver ${driver.id} has photo data but no URL path found`);
           }
+        } else {
+          console.log(`[Manager View] Driver ${driver.id} has no photo data`);
         }
 
         const driverInfo = {
