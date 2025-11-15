@@ -142,6 +142,77 @@ setupAuthRoutes(app, {
   strapiUrl: STRAPI_URL
 });
 
+// User Management API - Secure endpoint for creating users when admin panel freezes
+// Requires ADMIN_JWT_SECRET from environment variables
+app.post('/api/admin/create-user', async (req, res) => {
+  const { secret, username, email, password } = req.body;
+
+  // Validate admin secret (use ADMIN_JWT_SECRET as the key)
+  if (!secret || secret !== process.env.ADMIN_JWT_SECRET) {
+    return res.status(403).json({ success: false, error: 'Unauthorized - Invalid admin secret' });
+  }
+
+  if (!username || !email || !password) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields: username, email, password'
+    });
+  }
+
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
+  });
+
+  try {
+    await client.connect();
+
+    // Check if user already exists
+    const checkUser = await client.query(
+      'SELECT id FROM up_users WHERE username = $1 OR email = $2',
+      [username, email]
+    );
+
+    if (checkUser.rows.length > 0) {
+      await client.end();
+      return res.status(409).json({
+        success: false,
+        error: 'User already exists with that username or email'
+      });
+    }
+
+    // Hash password (Strapi uses bcrypt with 10 rounds)
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert user (Strapi v5 schema)
+    const result = await client.query(
+      `INSERT INTO up_users (username, email, password, confirmed, blocked, provider, created_at, updated_at, published_at, created_by_id, updated_by_id)
+       VALUES ($1, $2, $3, true, false, 'local', NOW(), NOW(), NOW(), 1, 1)
+       RETURNING id, username, email`,
+      [username, email, hashedPassword]
+    );
+
+    await client.end();
+
+    console.log(`✅ User created via API: ${username} (${email})`);
+
+    res.json({
+      success: true,
+      user: result.rows[0],
+      message: 'User created successfully. They can now login.'
+    });
+  } catch (error) {
+    console.error('User creation error:', error);
+    try {
+      await client.end();
+    } catch (e) {}
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // GET /login - serve React app (POST /login is handled by setupAuthRoutes)
 app.get('/login', (req, res) => {
   console.log('=== LOGIN PAGE: Serving React app ===');
