@@ -7,6 +7,9 @@ import { handleGoogleSheetsRequest, createMonthlySheet, readLoginHistoryFromShee
 import { setupAuthRoutes } from './src/login/authRoutes.js';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
+// DevAdmin authentication utilities
+import { generateDevAdminToken, verifyDevAdminToken, setDevAdminCookie, clearDevAdminCookie, extractTokenFromRequest } from './utils/jwtUtils.js';
+import { validateDevAdminCredentials, isDevAdminConfigured } from './utils/devAdminAuth.js';
 
 const { Client } = pg;
 
@@ -141,6 +144,141 @@ function getEnvironment() {
 setupAuthRoutes(app, {
   strapiUrl: STRAPI_URL
 });
+
+// ========================================
+// DEVADMIN AUTHENTICATION ENDPOINTS
+// ========================================
+
+/**
+ * POST /auth/devadmin - DevAdmin login endpoint
+ * Validates credentials against environment variables
+ * Sets httpOnly cookie with JWT token (XSS protection)
+ */
+app.post('/auth/devadmin', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    // Validation
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username and password are required'
+      });
+    }
+
+    // Check if devadmin is configured
+    if (!isDevAdminConfigured()) {
+      console.error('⚠️ DevAdmin not configured. Please set environment variables.');
+      return res.status(503).json({
+        success: false,
+        message: 'DevAdmin authentication is not configured on this server'
+      });
+    }
+
+    // Validate credentials
+    const isValid = await validateDevAdminCredentials(username, password);
+
+    if (!isValid) {
+      // Use generic error message to prevent username enumeration
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    // Generate JWT token
+    const token = generateDevAdminToken(username);
+
+    // Set httpOnly cookie (secure, XSS-protected)
+    setDevAdminCookie(res, token);
+
+    // Success response (no token in body - only in cookie!)
+    res.json({
+      success: true,
+      user: {
+        username,
+        role: 'devadmin'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ DevAdmin authentication error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Authentication failed. Please try again.'
+    });
+  }
+});
+
+/**
+ * GET /auth/verify-devadmin - Verify DevAdmin token
+ * Checks if current request has valid devadmin token in cookie
+ */
+app.get('/auth/verify-devadmin', (req, res) => {
+  try {
+    // Extract token from httpOnly cookie
+    const token = extractTokenFromRequest(req);
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'No authentication token found'
+      });
+    }
+
+    // Verify token
+    const decoded = verifyDevAdminToken(token);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    // Token is valid
+    res.json({
+      success: true,
+      user: {
+        username: decoded.username,
+        role: decoded.role
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Token verification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Verification failed'
+    });
+  }
+});
+
+/**
+ * POST /auth/logout-devadmin - DevAdmin logout
+ * Clears the httpOnly cookie
+ */
+app.post('/auth/logout-devadmin', (req, res) => {
+  try {
+    clearDevAdminCookie(res);
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Logout failed'
+    });
+  }
+});
+
+// ========================================
+// END DEVADMIN AUTHENTICATION ENDPOINTS
+// ========================================
 
 // User Management API - Secure endpoint for creating users when admin panel freezes
 // Requires ADMIN_JWT_SECRET from environment variables
