@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import StyledForm from "./StyledForm";
 import LoginForm from "./login/LoginForm.standalone";
 import ManagerView from "./ManagerView";
-import DevAdminLogin from "./components/DevAdminLogin";
 import { DevAdminProvider } from "./contexts/DevAdminContext";
 
 // Protected route wrapper
@@ -25,8 +24,6 @@ function App() {
     <DevAdminProvider>
       <Routes>
         <Route path="/login" element={<LoginForm />} />
-        {/* DevAdmin login */}
-        <Route path="/devadmin-login" element={<DevAdminLogin />} />
         {/* Root path */}
         <Route path="/" element={<ProtectedForm />} />
         {/* Language-specific paths */}

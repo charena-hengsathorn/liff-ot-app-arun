@@ -1,164 +1,72 @@
 import { useState, useEffect, useCallback } from 'react';
 
 /**
- * Hook to manage DevAdmin authentication state
+ * Hook to check DevAdmin status based on logged-in Strapi user
  *
- * SECURITY: Uses httpOnly cookies for token storage (XSS-safe)
- * - Token is NEVER stored in localStorage
- * - Token is automatically sent with all requests via cookies
- * - Frontend only tracks authentication state (true/false)
+ * IMPORTANT: This does NOT create separate authentication!
+ * - Checks the existing Strapi user from localStorage
+ * - If username matches DevAdmin criteria, isDevAdmin = true
+ * - No separate login required
  *
- * @returns {Object} DevAdmin state and functions
- * - isDevAdmin: boolean - Whether user is authenticated as DevAdmin
- * - loading: boolean - Whether authentication check is in progress
- * - user: object|null - DevAdmin user info
- * - login: function - Login with username/password
- * - logout: function - Logout and clear session
- * - checkAuth: function - Manually check authentication status
+ * @returns {Object} DevAdmin state
+ * - isDevAdmin: boolean - Whether current Strapi user is DevAdmin
+ * - loading: boolean - Whether check is in progress
+ * - user: object|null - Current Strapi user info
  */
 export function useDevAdmin() {
   const [isDevAdmin, setIsDevAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const [error, setError] = useState(null);
-
-  // Determine API base URL (same logic as StyledForm.jsx)
-  const getApiBaseUrl = () => {
-    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    return isLocalDev
-      ? 'http://localhost:3001'
-      : 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
-  };
-
-  const API_BASE_URL = getApiBaseUrl();
 
   /**
-   * Check if user is authenticated as DevAdmin
-   * Called on mount and after login
+   * Check if current Strapi user is DevAdmin
+   * Based on username or role
    */
-  const checkAuth = useCallback(async () => {
+  const checkAuth = useCallback(() => {
     try {
       setLoading(true);
-      setError(null);
 
-      const response = await fetch(`${API_BASE_URL}/auth/verify-devadmin`, {
-        method: 'GET',
-        credentials: 'include', // IMPORTANT: Sends httpOnly cookies
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
+      // Get Strapi user from localStorage (existing authentication)
+      const storedUser = localStorage.getItem('user');
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setIsDevAdmin(true);
-          setUser(data.user);
-          console.log('✅ DevAdmin authenticated:', data.user.username);
-        } else {
-          setIsDevAdmin(false);
-          setUser(null);
-        }
-      } else {
-        // Not authenticated (token missing, invalid, or expired)
+      if (!storedUser) {
+        // Not logged in
         setIsDevAdmin(false);
         setUser(null);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error('❌ DevAdmin auth check failed:', err);
-      setIsDevAdmin(false);
-      setUser(null);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [API_BASE_URL]);
 
-  /**
-   * Login as DevAdmin
-   * @param {string} username - DevAdmin username
-   * @param {string} password - DevAdmin password
-   * @returns {Promise<Object>} - Login result { success: boolean, message?: string }
-   */
-  const login = useCallback(async (username, password) => {
-    try {
-      setLoading(true);
-      setError(null);
+      const userData = JSON.parse(storedUser);
+      setUser(userData);
 
-      const response = await fetch(`${API_BASE_URL}/auth/devadmin`, {
-        method: 'POST',
-        credentials: 'include', // IMPORTANT: Receives httpOnly cookies
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ username, password })
-      });
+      // Check if user is DevAdmin
+      // Method 1: Check username
+      const isDevAdminUser = userData.username === 'devadmin' ||
+                            userData.username === 'admin' ||
+                            userData.email === 'devadmin@example.com';
 
-      const data = await response.json();
+      // Method 2: Check role (if Strapi user has role information)
+      // const hasDevAdminRole = userData.role?.name === 'DevAdmin' ||
+      //                         userData.role?.type === 'devadmin';
 
-      if (response.ok && data.success) {
+      if (isDevAdminUser) {
         setIsDevAdmin(true);
-        setUser(data.user);
-        console.log('✅ DevAdmin logged in:', data.user.username);
-        return { success: true };
+        console.log('✅ DevAdmin user detected:', userData.username);
       } else {
         setIsDevAdmin(false);
-        setUser(null);
-        const message = data.message || 'Login failed';
-        setError(message);
-        return { success: false, message };
+        console.log('ℹ️ Regular user:', userData.username);
       }
+
     } catch (err) {
-      console.error('❌ DevAdmin login failed:', err);
+      console.error('❌ DevAdmin check failed:', err);
       setIsDevAdmin(false);
       setUser(null);
-      const message = err.message || 'Login failed';
-      setError(message);
-      return { success: false, message };
     } finally {
       setLoading(false);
     }
-  }, [API_BASE_URL]);
+  }, []);
 
-  /**
-   * Logout DevAdmin
-   * Clears httpOnly cookie on backend
-   */
-  const logout = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch(`${API_BASE_URL}/auth/logout-devadmin`, {
-        method: 'POST',
-        credentials: 'include', // IMPORTANT: Sends cookies to be cleared
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        setIsDevAdmin(false);
-        setUser(null);
-        console.log('✅ DevAdmin logged out');
-        return { success: true };
-      } else {
-        const data = await response.json();
-        const message = data.message || 'Logout failed';
-        setError(message);
-        return { success: false, message };
-      }
-    } catch (err) {
-      console.error('❌ DevAdmin logout failed:', err);
-      // Even if logout fails on backend, clear frontend state
-      setIsDevAdmin(false);
-      setUser(null);
-      return { success: false, message: err.message };
-    } finally {
-      setLoading(false);
-    }
-  }, [API_BASE_URL]);
 
   // Check authentication on mount
   useEffect(() => {
@@ -169,9 +77,6 @@ export function useDevAdmin() {
     isDevAdmin,
     loading,
     user,
-    error,
-    login,
-    logout,
     checkAuth
   };
 }
