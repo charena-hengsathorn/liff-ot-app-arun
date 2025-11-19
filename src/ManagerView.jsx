@@ -359,30 +359,46 @@ function ManagerView() {
         onClick={() => navigate('/prod')}
         style={{
           position: 'fixed',
-          top: '20px',
-          left: '20px',
+          top: isMobile() ? '16px' : '20px',
+          left: isMobile() ? '16px' : '20px',
           zIndex: 1000,
-          padding: '8px 16px',
-          borderRadius: '20px',
+          padding: isMobile() ? '6px 0' : '10px 20px',
+          borderRadius: isMobile() ? '0' : '9999px',
           border: 'none',
-          background: isDarkMode ? '#334155' : '#e2e8f0',
-          color: isDarkMode ? '#f1f5f9' : '#1f2937',
-          fontSize: '12px',
-          fontWeight: '600',
+          background: isMobile() 
+            ? 'transparent' 
+            : (isDarkMode ? '#475569' : '#64748b'),
+          color: isDarkMode ? '#f1f5f9' : (isMobile() ? '#64748b' : '#ffffff'),
+          fontSize: isMobile() ? '14px' : '13px',
+          fontWeight: isMobile() ? '500' : '600',
           cursor: 'pointer',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-          transition: 'all 0.2s ease'
+          boxShadow: isMobile() ? 'none' : '0 2px 8px rgba(0,0,0,0.2)',
+          transition: 'all 0.2s ease',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          letterSpacing: isMobile() ? '0.01em' : '0',
+          textDecoration: isMobile() ? 'none' : 'none',
+          whiteSpace: 'nowrap'
         }}
         onMouseOver={(e) => {
-          e.target.style.transform = 'scale(1.05)';
-          e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
+          if (!isMobile()) {
+            e.target.style.transform = 'scale(1.05)';
+            e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            e.target.style.background = isDarkMode ? '#52667a' : '#556b7f';
+          } else {
+            e.target.style.opacity = '0.7';
+          }
         }}
         onMouseOut={(e) => {
-          e.target.style.transform = 'scale(1)';
-          e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+          if (!isMobile()) {
+            e.target.style.transform = 'scale(1)';
+            e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+            e.target.style.background = isDarkMode ? '#475569' : '#64748b';
+          } else {
+            e.target.style.opacity = '1';
+          }
         }}
       >
-        ← Back to Attendance
+        {isMobile() ? '← Back' : '← Back to Attendance'}
       </button>
 
       {/* Main Container */}
