@@ -291,6 +291,7 @@ function LoginForm() {
               fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
               boxSizing: "border-box",
               background: isLoggingIn ? "#f3f4f6" : "#ffffff",
+              color: "#1f2937",
               transition: "border-color 0.2s"
             }}
             placeholder="Enter your username"
@@ -336,6 +337,7 @@ function LoginForm() {
               fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
               boxSizing: "border-box",
               background: isLoggingIn ? "#f3f4f6" : "#ffffff",
+              color: "#1f2937",
               transition: "border-color 0.2s"
             }}
             placeholder="••••••••"
@@ -428,6 +430,28 @@ function LoginForm() {
         >
           {isLoggingIn ? labels[browserLang].loggingIn : labels[browserLang].loginButton}
         </button>
+
+        {/* Styles for autofill handling */}
+        <style>
+          {`
+            /* Fix autofill text color for all browsers */
+            input:-webkit-autofill,
+            input:-webkit-autofill:hover,
+            input:-webkit-autofill:focus,
+            input:-webkit-autofill:active {
+              -webkit-text-fill-color: #1f2937 !important;
+              -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+              transition: background-color 5000s ease-in-out 0s;
+            }
+
+            /* Firefox autofill */
+            input:-moz-autofill,
+            input:-moz-autofill-preview {
+              color: #1f2937 !important;
+              background-color: #ffffff !important;
+            }
+          `}
+        </style>
       </form>
     </div>
   );
