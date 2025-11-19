@@ -8,6 +8,7 @@ import DevToolsButton from './components/DevToolsButton';
 import DevToolsPanel, { ToolSection } from './components/DevToolsPanel';
 import DevToolsSections from './components/DevToolsSections';
 import { FileSpreadsheet, Calendar, Calculator, TestTube, Trash2, RotateCw, Play, StopCircle, AlertCircle, CheckCircle } from 'lucide-react';
+import { getAPIBaseURL } from './config/api';
 
 function isMobile() {
   if (typeof navigator === "undefined") return false;
@@ -1219,13 +1220,10 @@ function StyledForm() {
   const formatTime = (value) => value ? value : "Set Time";
   const formatComments = (value) => value ? value : "Add Comments";
 
-  // API Configuration - Heroku backend
-  // Only use localhost if we're actually running on localhost (for local development)
-  // The environment toggle (DEV/PROD button) should NOT affect backend URL, only which spreadsheet to use
-  const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const API_BASE_URL = isLocalDev
-    ? 'http://localhost:3001'
-    : 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
+  // API Configuration - Uses centralized config with environment variables
+  // Supports VITE_API_BASE_URL_DEV and VITE_API_BASE_URL_PROD from .env
+  // Automatically selects correct backend based on build environment
+  const API_BASE_URL = getAPIBaseURL();
 
   // Function to fetch drivers from Strapi
   const fetchDrivers = async () => {

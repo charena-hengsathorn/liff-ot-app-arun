@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import LoadingAnimation from '../components/LoadingAnimation';
+import { getAPIBaseURL } from '../config/api';
 
 // Helper functions (defined before component, like StyledForm)
 function isMobile() {
@@ -28,14 +29,6 @@ const getCookie = (name) => {
 // Environment helper functions
 const getEffectiveEnv = () => {
   return import.meta.env.DEV ? 'dev' : 'prod';
-};
-
-// API Configuration - matches StyledForm pattern
-const getAPIBaseURL = () => {
-  const isDev = import.meta.env.DEV;
-  return isDev
-    ? 'http://localhost:3001'
-    : 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
 };
 
 // Language detection
