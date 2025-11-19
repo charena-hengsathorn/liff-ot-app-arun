@@ -2909,22 +2909,22 @@ function StyledForm() {
                 }}
                 style={{
                   width: '100%',
-                  padding: '14px 16px',
+                  padding: '12px 0',
                   fontSize: '16px',
                   fontWeight: '400',
-                  borderRadius: '8px',
-                  background: isDarkMode ? '#3b82f6' : '#3b82f6',
-                  color: '#ffffff',
+                  background: 'transparent',
+                  color: isDarkMode ? '#f1f5f9' : '#1f2937',
                   cursor: 'pointer',
                   border: 'none',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '10px',
-                  fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
+                  justifyContent: 'flex-start',
+                  gap: '12px',
+                  fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
+                  textAlign: 'left'
                 }}
               >
-                <span style={{ fontSize: '18px' }}>👥</span>
+                <span style={{ fontSize: '20px' }}>👥</span>
                 <span>Manager View</span>
               </button>
             </div>
