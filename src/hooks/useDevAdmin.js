@@ -19,14 +19,14 @@ export function useDevAdmin() {
   const [user, setUser] = useState(null);
 
   /**
-   * Check if current Strapi user is DevAdmin
-   * Based on username or role
+   * Check if current user is DevAdmin
+   * Based on isDevAdmin flag set during login
    */
   const checkAuth = useCallback(() => {
     try {
       setLoading(true);
 
-      // Get Strapi user from localStorage (existing authentication)
+      // Get user from localStorage (set during login)
       const storedUser = localStorage.getItem('user');
 
       if (!storedUser) {
@@ -40,22 +40,14 @@ export function useDevAdmin() {
       const userData = JSON.parse(storedUser);
       setUser(userData);
 
-      // Check if user is DevAdmin
-      // Method 1: Check username
-      const isDevAdminUser = userData.username === 'devadmin' ||
-                            userData.username === 'admin' ||
-                            userData.email === 'devadmin@example.com';
-
-      // Method 2: Check role (if Strapi user has role information)
-      // const hasDevAdminRole = userData.role?.name === 'DevAdmin' ||
-      //                         userData.role?.type === 'devadmin';
-
-      if (isDevAdminUser) {
+      // Check isDevAdmin flag (set during login after backend validation)
+      // Backend validates credentials against env vars
+      if (userData.isDevAdmin === true) {
         setIsDevAdmin(true);
-        console.log('✅ DevAdmin user detected:', userData.username);
+        console.log('✅ DevAdmin user detected');
       } else {
         setIsDevAdmin(false);
-        console.log('ℹ️ Regular user:', userData.username);
+        console.log('ℹ️ Regular user');
       }
 
     } catch (err) {

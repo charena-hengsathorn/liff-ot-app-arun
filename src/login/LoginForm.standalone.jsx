@@ -148,7 +148,7 @@ function LoginForm({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -157,23 +157,51 @@ function LoginForm({
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      // Step 1: Try DevAdmin authentication first (credentials checked against env vars)
+      let response = await fetch(`${API_BASE_URL}/auth/devadmin`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         credentials: 'include',
         body: JSON.stringify({
-          identifier: formData.username,
-          password: formData.password,
-          rememberMe: rememberMe
+          username: formData.username,
+          password: formData.password
         })
       });
 
-      const result = await response.json();
+      let result = await response.json();
+      let isDevAdmin = false;
 
-      if (!response.ok) {
-        throw new Error(result.error || result.message || labels.loginError);
+      // Step 2: If DevAdmin auth failed, try regular Strapi login
+      if (!response.ok || !result.success) {
+        console.log('Not DevAdmin, trying regular Strapi login...');
+
+        response = await fetch(`${API_BASE_URL}/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            identifier: formData.username,
+            password: formData.password,
+            rememberMe: rememberMe
+          })
+        });
+
+        result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || result.message || labels.loginError);
+        }
+
+        isDevAdmin = false; // Regular Strapi user
+      } else {
+        // DevAdmin authentication successful
+        console.log('✅ DevAdmin authenticated');
+        isDevAdmin = true;
       }
 
       if (result.success || result.jwt) {
@@ -184,9 +212,14 @@ function LoginForm({
           document.cookie = `${config.cookieSettings.usernameCookieName}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
         }
 
-        // Store user info
+        // Store user info with isDevAdmin flag
         if (result.user) {
-          localStorage.setItem('user', JSON.stringify(result.user));
+          const userWithDevAdminFlag = {
+            ...result.user,
+            isDevAdmin: isDevAdmin
+          };
+          localStorage.setItem('user', JSON.stringify(userWithDevAdminFlag));
+          console.log('User stored:', userWithDevAdminFlag);
         }
 
         // Custom success handler or default redirect
