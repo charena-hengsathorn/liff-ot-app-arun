@@ -2,6 +2,8 @@ import { useRef, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "./components/ui/select";
 import LoadingAnimation from './components/LoadingAnimation';
+import { useDevAdminContext } from './contexts/DevAdminContext';
+import { getSafeEnvironment } from './utils/envGuard';
 
 function isMobile() {
   if (typeof navigator === "undefined") return false;
@@ -186,6 +188,8 @@ const labels = {
 function StyledForm() {
   const navigate = useNavigate();
   const location = useLocation();
+  // DevAdmin context for conditional dev tools rendering
+  const { isDevAdmin, loading: devAdminLoading } = useDevAdminContext();
   
   // Add CSS animation for modal
   useEffect(() => {
@@ -2698,8 +2702,8 @@ function StyledForm() {
       }}
       onClick={closeAllDropdowns}
     >
-      {/* Environment Switcher Button - Top Right (hidden on /prod when on production) */}
-      {!(location.pathname === '/prod' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') && (
+      {/* Environment Switcher Button - Top Right (DevAdmin Only) */}
+      {isDevAdmin && !(location.pathname === '/prod' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') && (
         <button
           type="button"
           onClick={() => {
@@ -3373,8 +3377,8 @@ function StyledForm() {
           </button>
         </div>
 
-                {/* Month/Year Selector and Create Sheet - Dev Only */}
-                {getEffectiveUIEnv() === 'dev' && (
+                {/* Month/Year Selector and Create Sheet - DevAdmin Only */}
+                {isDevAdmin && (
           <div style={{ 
             marginBottom: 20,
             border: isDarkMode ? '1px solid #334155' : '1px solid #e5e7eb',
@@ -3534,8 +3538,8 @@ function StyledForm() {
           </div>
         )}
 
-        {/* Manual Testing Section - Dev Only */}
-        {getEffectiveUIEnv() === 'dev' && (
+        {/* Manual Testing Section - DevAdmin Only */}
+        {isDevAdmin && (
           <div style={{ 
             marginBottom: 20,
             border: isDarkMode ? '1px solid #334155' : '1px solid #e5e7eb',
@@ -4036,8 +4040,8 @@ function StyledForm() {
           </div>
         )}
 
-        {/* Day of Week Update Section - Dev Only */}
-        {getEffectiveUIEnv() === 'dev' && (
+        {/* Day of Week Update Section - DevAdmin Only */}
+        {isDevAdmin && (
           <div style={{ 
             marginBottom: 20,
             border: isDarkMode ? '1px solid #334155' : '1px solid #e5e7eb',
@@ -4226,7 +4230,7 @@ function StyledForm() {
         )}
         
         {/* Manual OT Calculation Section - Dev Only */}
-        {getEffectiveUIEnv() === 'dev' && (
+        {isDevAdmin && (
           <div style={{ 
             marginBottom: 20,
             border: isDarkMode ? '1px solid #334155' : '1px solid #e5e7eb',
@@ -4606,7 +4610,7 @@ function StyledForm() {
         )}
         
         {/* Test Auto Submit Button - Dev Only */}
-        {getEffectiveUIEnv() === 'dev' && (
+        {isDevAdmin && (
           <button
             type="button"
             onClick={testAutoSubmit}
@@ -4632,7 +4636,7 @@ function StyledForm() {
         )}
         
         {/* Clear Cache Button - Dev Only */}
-        {getEffectiveUIEnv() === 'dev' && (
+        {isDevAdmin && (
           <button
             type="button"
             onClick={clearExistingEntryCache}
@@ -4658,7 +4662,7 @@ function StyledForm() {
         )}
         
         {/* Test Loading Animation Button - Dev Only */}
-        {getEffectiveUIEnv() === 'dev' && (
+        {isDevAdmin && (
           <button
             type="button"
             onClick={() => {
@@ -4686,7 +4690,7 @@ function StyledForm() {
         )}
         
         {/* Reset Stuck Flag Button - Dev Only */}
-        {getEffectiveUIEnv() === 'dev' && (
+        {isDevAdmin && (
           <button
             type="button"
             onClick={() => {
@@ -4715,7 +4719,7 @@ function StyledForm() {
         )}
         
         {/* Approval System Toggle - Dev Only */}
-        {getEffectiveUIEnv() === 'dev' && (
+        {isDevAdmin && (
           <button
             type="button"
             onClick={() => {

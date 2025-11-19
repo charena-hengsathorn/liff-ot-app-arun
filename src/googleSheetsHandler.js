@@ -229,7 +229,7 @@ export async function submitWithClockTimes(data) {
 
     console.log(`📝 submitWithClockTimes called for ${env} environment`);
     console.log(`📝 Driver: ${driverName}, Date: ${thaiDate}, Clock In: ${clockIn}, Clock Out: ${clockOut}`);
-    
+
     const spreadsheetId = getSpreadsheetId(env);
     if (!spreadsheetId) {
       console.error(`❌ No spreadsheet ID found for ${env} environment`);
@@ -239,7 +239,7 @@ export async function submitWithClockTimes(data) {
       };
     }
     console.log(`📊 Using spreadsheet ID: ${spreadsheetId} for ${env} environment`);
-    
+
     const submittedAt = getBangkokTime();
 
     // Calculate OT hours if clock out time is provided and after 17:00
@@ -320,7 +320,7 @@ export async function submitWithClockTimes(data) {
 
     // For manual tests, use the provided targetSheetName; otherwise calculate from date
     const targetSheetName = data.targetSheetName || getSheetNameFromDate(thaiDate);
-    
+
     console.log(`📊 Using sheet: "${targetSheetName}" (${data.targetSheetName ? 'manually specified' : 'calculated from date'})`);
 
     // Check for existing entry (pass targetSheetName for manual tests)
@@ -1159,7 +1159,7 @@ export async function checkAndGetRowByDriverAndDate(driverName, thaiDate, env = 
             rawRow[8] || '', // OT Hours (was I, now J)
             rawRow[9] || ''  // Approval (was J, now K)
           ];
-          
+
           return {
             success: true,
             exists: true,

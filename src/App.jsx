@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import StyledForm from "./StyledForm";
 import LoginForm from "./login/LoginForm.standalone";
 import ManagerView from "./ManagerView";
+import DevAdminLogin from "./components/DevAdminLogin";
+import { DevAdminProvider } from "./contexts/DevAdminContext";
 
 // Protected route wrapper
 const ProtectedRoute = ({ children }) => {
@@ -20,20 +22,24 @@ const ProtectedForm = () => (
 
 function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginForm />} />
-      {/* Root path */}
-      <Route path="/" element={<ProtectedForm />} />
-      {/* Language-specific paths */}
-      <Route path="/th" element={<ProtectedForm />} />
-      <Route path="/en" element={<ProtectedForm />} />
-      {/* Prod path */}
-      <Route path="/prod" element={<ProtectedForm />} />
-      {/* Manager view */}
-      <Route path="/manager" element={<ProtectedRoute><ManagerView /></ProtectedRoute>} />
-      {/* Fallback to login for any other unmatched routes */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+    <DevAdminProvider>
+      <Routes>
+        <Route path="/login" element={<LoginForm />} />
+        {/* DevAdmin login */}
+        <Route path="/devadmin-login" element={<DevAdminLogin />} />
+        {/* Root path */}
+        <Route path="/" element={<ProtectedForm />} />
+        {/* Language-specific paths */}
+        <Route path="/th" element={<ProtectedForm />} />
+        <Route path="/en" element={<ProtectedForm />} />
+        {/* Prod path */}
+        <Route path="/prod" element={<ProtectedForm />} />
+        {/* Manager view */}
+        <Route path="/manager" element={<ProtectedRoute><ManagerView /></ProtectedRoute>} />
+        {/* Fallback to login for any other unmatched routes */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </DevAdminProvider>
   );
 }
 

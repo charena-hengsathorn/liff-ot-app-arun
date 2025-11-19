@@ -190,7 +190,7 @@ function ManagerView() {
       const driver = drivers.find(d => d.id === id);
       return driver?.name || 'Unknown';
     }).join(', ');
-    
+
     // Store the action to execute after confirmation
     const deleteAction = async () => {
       try {
@@ -215,7 +215,7 @@ function ManagerView() {
         showAlert(`Error deleting driver(s): ${err.message}`, 'error');
       }
     };
-    
+
     setPendingDeleteAction(() => deleteAction);
     showAlert(`Are you sure you want to delete ${driverIds.length} driver(s)?\n\n${driverNames}`, 'error');
   };
@@ -282,7 +282,7 @@ function ManagerView() {
           const day = parseInt(parts[0]);
           const month = parseInt(parts[1]);
           const thaiYear = parseInt(parts[2]);
-          
+
           // Check if it's a Thai Buddhist year (>= 2400) or Gregorian year
           if (thaiYear >= 2400) {
             // Convert Thai Buddhist year to Gregorian year
@@ -308,7 +308,7 @@ function ManagerView() {
           }
         }
       }
-      
+
       // Try parsing as ISO date string
       const date = new Date(dateString);
       if (!isNaN(date.getTime())) {
@@ -318,7 +318,7 @@ function ManagerView() {
           day: 'numeric'
         });
       }
-      
+
       // If all parsing fails, return the original string
       return dateString;
     } catch (error) {
@@ -334,8 +334,8 @@ function ManagerView() {
   };
 
   return (
-    <div 
-      className={isDarkMode ? 'dark-mode' : ''} 
+    <div
+      className={isDarkMode ? 'dark-mode' : ''}
       style={{
         minHeight: "100vh",
         width: "100vw",
@@ -408,20 +408,20 @@ function ManagerView() {
       >
         {/* Header */}
         <div>
-          <h1 style={{ 
-            textAlign: "center", 
-            marginBottom: 10, 
+          <h1 style={{
+            textAlign: "center",
+            marginBottom: 10,
             marginTop: 0,
-            fontWeight: 700, 
-            fontSize: isMobile() ? 24 : 28, 
+            fontWeight: 700,
+            fontSize: isMobile() ? 24 : 28,
             color: isDarkMode ? "#f1f5f9" : undefined
           }}>
             Driver Management
           </h1>
-          <div style={{ 
-            textAlign: "center", 
-            marginBottom: 20, 
-            color: isDarkMode ? '#cbd5e1' : '#555', 
+          <div style={{
+            textAlign: "center",
+            marginBottom: 20,
+            color: isDarkMode ? '#cbd5e1' : '#555',
             fontSize: 14,
           }}>
             Review and manage drivers
@@ -672,9 +672,9 @@ function ManagerView() {
             {!isMobile() && (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ 
-                    background: isDarkMode ? '#0f172a' : '#f8fafc', 
-                    borderBottom: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}` 
+                  <tr style={{
+                    background: isDarkMode ? '#0f172a' : '#f8fafc',
+                    borderBottom: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`
                   }}>
                     {actionMode && (
                       <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
@@ -702,9 +702,9 @@ function ManagerView() {
                     </tr>
                   ) : (
                     drivers.map((driver) => (
-                      <tr key={driver.id} style={{ 
+                      <tr key={driver.id} style={{
                         borderBottom: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
-                        background: selectedDrivers.has(driver.id) 
+                        background: selectedDrivers.has(driver.id)
                           ? (isDarkMode ? '#1e293b' : '#f0f9ff')
                           : 'transparent'
                       }}>
