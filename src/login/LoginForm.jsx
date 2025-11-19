@@ -280,6 +280,7 @@ function LoginForm() {
             onChange={handleChange}
             required
             disabled={isLoggingIn}
+            autoComplete="username"
             style={{
               width: "100%",
               padding: "12px 16px",
@@ -291,8 +292,8 @@ function LoginForm() {
               boxSizing: "border-box",
               background: isLoggingIn ? "#f3f4f6" : "#ffffff",
               color: "#1f2937",
-              transition: "border-color 0.2s",
-              ...(browserLang === 'th' && { fontFamily: '"Noto Sans Thai", sans-serif' })
+              fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : 'inherit',
+              transition: "border-color 0.2s"
             }}
             placeholder="Enter your username"
           />
@@ -326,6 +327,7 @@ function LoginForm() {
             onChange={handleChange}
             required
             disabled={isLoggingIn}
+            autoComplete="current-password"
             style={{
               width: "100%",
               padding: "12px 16px",
@@ -337,8 +339,8 @@ function LoginForm() {
               boxSizing: "border-box",
               background: isLoggingIn ? "#f3f4f6" : "#ffffff",
               color: "#1f2937",
-              transition: "border-color 0.2s",
-              ...(browserLang === 'th' && { fontFamily: '"Noto Sans Thai", sans-serif' })
+              fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : 'inherit',
+              transition: "border-color 0.2s"
             }}
             placeholder="••••••••"
           />

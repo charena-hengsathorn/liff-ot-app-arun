@@ -328,9 +328,10 @@ function LoginForm({
                 : "1px solid #d1d5db",
               borderRadius: theme.inputBorderRadius,
               fontSize: "16px",
-              fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
               boxSizing: "border-box",
               background: isLoggingIn ? "#f3f4f6" : "#ffffff",
+              color: "#1f2937",
+              fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : 'inherit',
               transition: "border-color 0.2s"
             }}
             placeholder="username"
@@ -372,9 +373,10 @@ function LoginForm({
                 : "1px solid #d1d5db",
               borderRadius: theme.inputBorderRadius,
               fontSize: "16px",
-              fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
               boxSizing: "border-box",
               background: isLoggingIn ? "#f3f4f6" : "#ffffff",
+              color: "#1f2937",
+              fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : 'inherit',
               transition: "border-color 0.2s"
             }}
             placeholder="••••••••"
