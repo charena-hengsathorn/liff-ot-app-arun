@@ -2719,6 +2719,25 @@ function StyledForm() {
     return () => match.removeEventListener('change', handler);
   }, []);
 
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      // Call logout endpoint
+      await fetch(`${API_BASE_URL}/logout`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (error) {
+      console.error('Logout request failed:', error);
+    } finally {
+      // Clear all local storage
+      localStorage.clear();
+
+      // Navigate to login page
+      navigate('/login');
+    }
+  };
+
   return (
     <div 
       className={isDarkMode ? 'dark-mode' : ''} 
@@ -2762,20 +2781,55 @@ function StyledForm() {
         autoComplete="off"
         onSubmit={handleSubmit}
       >
-        {/* Language Switcher Button */}
-        <div style={{ 
-          position: 'absolute', 
-          top: '17px', 
+        {/* Language Switcher and Logout Buttons */}
+        <div style={{
+          position: 'absolute',
+          top: '17px',
           right: '20px',
-          zIndex: 1000
+          zIndex: 1000,
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center'
         }}>
+          {/* Logout Button */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Logout"
+            style={{
+              padding: '8px 12px',
+              fontSize: '16px',
+              borderRadius: '17px',
+              background: isDarkMode ? '#27272a' : '#fff',
+              color: isDarkMode ? '#f1f5f9' : '#333',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              transition: 'all 0.2s ease',
+              border: 'none'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+            }}
+          >
+            🚪
+          </button>
+
+          {/* Language Switcher Button */}
           <button
             type="button"
             onClick={() => {
               const newLang = browserLang === 'th' ? 'en' : 'th';
               // Preserve current path (like /prod) and just update language state
               const currentPath = window.location.pathname;
-              
+
               // If on /prod, stay on /prod and just update language via state
               if (currentPath === '/prod') {
                 setBrowserLang(newLang);
@@ -2791,7 +2845,6 @@ function StyledForm() {
               padding: '8px 12px',
               fontSize: '16px',
               borderRadius: '17px',
-              //border: '1px solid #ccc',
               background: isDarkMode ? '#27272a' : '#fff',
               color: isDarkMode ? '#f1f5f9' : '#333',
               cursor: 'pointer',
@@ -2799,15 +2852,16 @@ function StyledForm() {
               alignItems: 'center',
               gap: '8px',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.2s ease',
+              border: 'none'
             }}
             onMouseOver={(e) => {
-              e.target.style.transform = 'translateY(-1px)';
-              e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
             }}
             onMouseOut={(e) => {
-              e.target.style.transform = 'translateY(0)';
-              e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
             }}
           >
             {browserLang === 'th' ? '🇹🇭' : '🇺🇸'}
@@ -3391,7 +3445,7 @@ function StyledForm() {
         <>
           {/* Floating Gear Button */}
           <DevToolsButton
-            onClick={() => setIsDevPanelOpen(true)}
+            onClick={() => setIsDevPanelOpen(prev => !prev)}
             isOpen={isDevPanelOpen}
           />
 
