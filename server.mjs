@@ -2010,20 +2010,45 @@ app.delete('/api/drivers/:id', async (req, res) => {
       }
     });
 
-    const data = await response.json();
-
     console.log('Strapi delete response status:', response.status);
-    console.log('Strapi delete response data:', JSON.stringify(data, null, 2));
+    console.log('Strapi delete response headers:', response.headers.raw());
 
     // Set CORS headers
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
 
-    if (!response.ok) {
-      return res.status(response.status).json(data);
+    // Check if response has content before parsing JSON
+    const contentType = response.headers.get('content-type');
+    const hasContent = response.headers.get('content-length') !== '0';
+
+    let data = null;
+
+    // Only parse JSON if response has content and is JSON
+    if (hasContent && contentType && contentType.includes('application/json')) {
+      try {
+        data = await response.json();
+        console.log('Strapi delete response data:', JSON.stringify(data, null, 2));
+      } catch (jsonError) {
+        console.error('Error parsing JSON response:', jsonError);
+        // If JSON parsing fails but response is OK, treat as success
+        if (response.ok) {
+          return res.json({ data: { id: parseInt(id), deleted: true } });
+        }
+        throw jsonError;
+      }
+    } else {
+      // No content or not JSON - for successful deletes, return success
+      console.log('No JSON content in response');
+      if (response.ok) {
+        return res.json({ data: { id: parseInt(id), deleted: true } });
+      }
     }
 
-    res.json(data);
+    if (!response.ok) {
+      return res.status(response.status).json(data || { error: 'Delete failed' });
+    }
+
+    res.json(data || { data: { id: parseInt(id), deleted: true } });
   } catch (error) {
     console.error('Error deleting driver:', error);
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
