@@ -241,14 +241,23 @@ export default function DevToolsSections({
           {manualTestOTResult && (
             <div style={{
               padding: '12px',
-              background: 'rgba(34, 197, 94, 0.1)',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
+              background: manualTestOTResult.businessRuleBlocked ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+              border: manualTestOTResult.businessRuleBlocked ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
               borderRadius: '6px',
               fontSize: '12px',
-              color: '#86efac'
+              color: manualTestOTResult.businessRuleBlocked ? '#fca5a5' : '#86efac'
             }}>
               <div style={{ fontWeight: '600', marginBottom: '4px' }}>📊 OT Calculation Preview</div>
-              <div>{manualTestOTResult.message || 'Missing date or clock-out time'}</div>
+              <div>
+                {manualTestOTResult.otHours ? (
+                  <>⏰ OT Hours: {manualTestOTResult.otHours}</>
+                ) : (
+                  <>{manualTestOTResult.reason || 'Missing date or clock-out time'}</>
+                )}
+                {manualTestOTResult.businessRuleBlocked && (
+                  <div style={{ marginTop: '4px' }}>🚫 {manualTestOTResult.reason}</div>
+                )}
+              </div>
             </div>
           )}
 

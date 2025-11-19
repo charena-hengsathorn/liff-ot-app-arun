@@ -4778,7 +4778,7 @@ function StyledForm() {
                 handleManualTestChange={handleManualTestChange}
                 handleSubmitManualTest={handleManualTestSubmit}
                 isSubmittingManualTest={isManualTesting}
-                manualTestOTResult={manualTestOTResult}
+                manualTestOTResult={otCalculation}
                 clearManualTest={clearManualTest}
 
                 // Dev Tool Buttons props
