@@ -51,7 +51,7 @@ export default function DevToolsPanel({
           // Desktop: Genie effect from gear icon (floating panel)
           ...(window.innerWidth >= 768 ? {
             left: '24px',
-            top: '24px',
+            top: 0, // Start from top to cover Manager View button
             bottom: '104px', // Above gear icon (24px + 56px gear + 24px margin)
             width: '420px',
             borderRadius: '16px',
