@@ -2909,9 +2909,9 @@ function StyledForm() {
                 }}
                 style={{
                   width: '100%',
-                  padding: '12px 16px',
+                  padding: '14px 16px',
                   fontSize: '16px',
-                  fontWeight: '500',
+                  fontWeight: '400',
                   borderRadius: '8px',
                   background: isDarkMode ? '#3b82f6' : '#3b82f6',
                   color: '#ffffff',
@@ -2920,11 +2920,12 @@ function StyledForm() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '8px',
+                  gap: '10px',
                   fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
                 }}
               >
-                👥 <span>Manager View</span>
+                <span style={{ fontSize: '18px' }}>👥</span>
+                <span>Manager View</span>
               </button>
             </div>
 
@@ -2974,32 +2975,28 @@ function StyledForm() {
             top: '20px',
             left: '20px',
             zIndex: 1001,
-            padding: '10px 16px',
-            fontSize: '16px',
-            borderRadius: '17px',
-            background: isDarkMode ? '#1e40af' : '#3b82f6',
+            padding: '10px 20px',
+            fontSize: '15px',
+            borderRadius: '8px',
+            background: isDarkMode ? '#334155' : '#475569',
             color: '#ffffff',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             border: 'none',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            fontWeight: '500',
+            boxShadow: 'none',
+            fontWeight: '400',
             transition: 'all 0.2s'
           }}
           onMouseOver={(e) => {
-            e.currentTarget.style.background = isDarkMode ? '#1e3a8a' : '#2563eb';
-            e.currentTarget.style.transform = 'translateY(-1px)';
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+            e.currentTarget.style.background = isDarkMode ? '#475569' : '#64748b';
           }}
           onMouseOut={(e) => {
-            e.currentTarget.style.background = isDarkMode ? '#1e40af' : '#3b82f6';
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+            e.currentTarget.style.background = isDarkMode ? '#334155' : '#475569';
           }}
         >
-          👥 <span>Manager View</span>
+          <span>→ Manager View</span>
         </button>
       )}
 
