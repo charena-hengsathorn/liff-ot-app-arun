@@ -1526,9 +1526,11 @@ app.get('/api/drivers', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
 
-    console.log('Fetching drivers from Strapi:', `${STRAPI_URL}/api/drivers?populate=*`);
+    // Strapi v5: Need to explicitly populate photo field for media
+    const populateQuery = 'populate[photo]=*&populate[user]=*';
+    console.log('Fetching drivers from Strapi:', `${STRAPI_URL}/api/drivers?${populateQuery}`);
 
-    const response = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
+    const response = await fetch(`${STRAPI_URL}/api/drivers?${populateQuery}`, {
       headers: {
         'Content-Type': 'application/json'
       }
@@ -1561,11 +1563,12 @@ app.get('/api/drivers/manager-view', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
 
-    console.log(`[Manager View] Fetching drivers from Strapi: ${STRAPI_URL}/api/drivers?populate=*`);
+    // Strapi v5: Need to explicitly populate photo field for media
+    const populateQuery = 'populate[photo]=*&populate[user]=*';
+    console.log(`[Manager View] Fetching drivers from Strapi: ${STRAPI_URL}/api/drivers?${populateQuery}`);
 
     // Fetch all drivers with populated relations
-    // Use proper Strapi v5 populate syntax - populate=* should be enough for all fields including media
-    const driversResponse = await fetch(`${STRAPI_URL}/api/drivers?populate=*`, {
+    const driversResponse = await fetch(`${STRAPI_URL}/api/drivers?${populateQuery}`, {
       headers: {
         'Content-Type': 'application/json'
       }
