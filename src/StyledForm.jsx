@@ -3378,7 +3378,7 @@ function StyledForm() {
         </div>
 
                 {/* Month/Year Selector and Create Sheet - DevAdmin Only */}
-                {isDevAdmin && (
+                {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <div style={{ 
             marginBottom: 20,
             border: isDarkMode ? '1px solid #334155' : '1px solid #e5e7eb',
@@ -3539,7 +3539,7 @@ function StyledForm() {
         )}
 
         {/* Manual Testing Section - DevAdmin Only */}
-        {isDevAdmin && (
+        {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <div style={{ 
             marginBottom: 20,
             border: isDarkMode ? '1px solid #334155' : '1px solid #e5e7eb',
@@ -4041,7 +4041,7 @@ function StyledForm() {
         )}
 
         {/* Day of Week Update Section - DevAdmin Only */}
-        {isDevAdmin && (
+        {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <div style={{ 
             marginBottom: 20,
             border: isDarkMode ? '1px solid #334155' : '1px solid #e5e7eb',
@@ -4230,7 +4230,7 @@ function StyledForm() {
         )}
         
         {/* Manual OT Calculation Section - Dev Only */}
-        {isDevAdmin && (
+        {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <div style={{ 
             marginBottom: 20,
             border: isDarkMode ? '1px solid #334155' : '1px solid #e5e7eb',
@@ -4610,7 +4610,7 @@ function StyledForm() {
         )}
         
         {/* Test Auto Submit Button - Dev Only */}
-        {isDevAdmin && (
+        {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <button
             type="button"
             onClick={testAutoSubmit}
@@ -4636,7 +4636,7 @@ function StyledForm() {
         )}
         
         {/* Clear Cache Button - Dev Only */}
-        {isDevAdmin && (
+        {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <button
             type="button"
             onClick={clearExistingEntryCache}
@@ -4662,7 +4662,7 @@ function StyledForm() {
         )}
         
         {/* Test Loading Animation Button - Dev Only */}
-        {isDevAdmin && (
+        {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <button
             type="button"
             onClick={() => {
@@ -4690,7 +4690,7 @@ function StyledForm() {
         )}
         
         {/* Reset Stuck Flag Button - Dev Only */}
-        {isDevAdmin && (
+        {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <button
             type="button"
             onClick={() => {
@@ -4719,7 +4719,7 @@ function StyledForm() {
         )}
         
         {/* Approval System Toggle - Dev Only */}
-        {isDevAdmin && (
+        {isDevAdmin && getEffectiveUIEnv() === 'dev' && (
           <button
             type="button"
             onClick={() => {
