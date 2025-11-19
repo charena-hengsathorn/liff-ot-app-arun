@@ -4776,8 +4776,8 @@ function StyledForm() {
                 // Manual Testing props
                 manualTestData={manualTestData}
                 handleManualTestChange={handleManualTestChange}
-                handleSubmitManualTest={handleSubmitManualTest}
-                isSubmittingManualTest={isSubmittingManualTest}
+                handleSubmitManualTest={handleManualTestSubmit}
+                isSubmittingManualTest={isManualTesting}
                 manualTestOTResult={manualTestOTResult}
                 clearManualTest={clearManualTest}
 
