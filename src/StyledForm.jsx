@@ -2854,7 +2854,7 @@ function StyledForm() {
               position: 'fixed',
               left: 0,
               top: 0,
-              bottom: 0,
+              height: '100vh',
               width: '280px',
               background: isDarkMode ? 'linear-gradient(135deg, #1f2937 0%, #111827 100%)' : '#ffffff',
               boxShadow: '2px 0 8px rgba(0,0,0,0.15)',
@@ -2862,7 +2862,8 @@ function StyledForm() {
               transition: 'transform 0.3s ease',
               zIndex: 1101,
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              overflowY: 'auto'
             }}
           >
             {/* Menu Header */}
