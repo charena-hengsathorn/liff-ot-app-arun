@@ -2899,7 +2899,36 @@ function StyledForm() {
               </button>
             </div>
 
-            {/* Menu Content - Spacer */}
+            {/* Menu Content */}
+            <div style={{ padding: '16px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  navigate('/manager');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  borderRadius: '8px',
+                  background: isDarkMode ? '#3b82f6' : '#3b82f6',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
+                }}
+              >
+                👥 <span>Manager View</span>
+              </button>
+            </div>
+
+            {/* Spacer */}
             <div style={{ flex: 1 }}></div>
 
             {/* Logout Button at Bottom */}
@@ -2932,6 +2961,46 @@ function StyledForm() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Desktop Manager View Button - Only show on desktop */}
+      {!isMobile() && (
+        <button
+          type="button"
+          onClick={() => navigate('/manager')}
+          title="Manager View"
+          style={{
+            position: 'fixed',
+            top: '20px',
+            left: '20px',
+            zIndex: 1001,
+            padding: '10px 16px',
+            fontSize: '16px',
+            borderRadius: '17px',
+            background: isDarkMode ? '#1e40af' : '#3b82f6',
+            color: '#ffffff',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            border: 'none',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            fontWeight: '500',
+            transition: 'all 0.2s'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = isDarkMode ? '#1e3a8a' : '#2563eb';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = isDarkMode ? '#1e40af' : '#3b82f6';
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+          }}
+        >
+          👥 <span>Manager View</span>
+        </button>
       )}
 
       {/* Desktop Logout Button - Only show on desktop */}
