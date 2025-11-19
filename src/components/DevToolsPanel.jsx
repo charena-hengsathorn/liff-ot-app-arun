@@ -39,23 +39,44 @@ export default function DevToolsPanel({
         />
       )}
 
-      {/* Sliding Panel */}
+      {/* Panel with Genie Effect (Desktop) / Slide Effect (Mobile) */}
       <div
         style={{
           position: 'fixed',
-          left: 0,
-          top: 0,
-          height: '100%',
-          width: window.innerWidth < 640 ? '100%' : '400px',
-          background: 'linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%)',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-          transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
-          transition: isOpen
-            ? 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' // Bounce in (genie effect)
-            : 'transform 0.3s cubic-bezier(0.4, 0, 1, 1)', // Ease out
           zIndex: 999,
           overflowY: 'auto',
           overflowX: 'hidden',
+          background: 'linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%)',
+
+          // Desktop: Genie effect from gear icon (floating panel)
+          ...(window.innerWidth >= 768 ? {
+            left: '24px',
+            top: '24px',
+            bottom: '104px', // Above gear icon (24px + 56px gear + 24px margin)
+            width: '420px',
+            borderRadius: '16px',
+            transformOrigin: 'bottom left', // Grow from gear icon position
+            transform: isOpen ? 'scale(1)' : 'scale(0)',
+            opacity: isOpen ? 1 : 0,
+            boxShadow: isOpen
+              ? '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px rgba(147, 51, 234, 0.2)'
+              : 'none',
+            transition: isOpen
+              ? 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)' // Genie pop-in with bounce
+              : 'all 0.3s cubic-bezier(0.4, 0, 0.6, 1)', // Smooth collapse
+          } : {
+            // Mobile: Slide from left (existing behavior)
+            left: 0,
+            top: 0,
+            height: '100%',
+            width: '100%',
+            borderRadius: 0,
+            transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            transition: isOpen
+              ? 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
+              : 'transform 0.3s cubic-bezier(0.4, 0, 1, 1)',
+          }),
         }}
       >
         {/* Header */}
