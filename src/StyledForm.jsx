@@ -6,7 +6,8 @@ import { useDevAdminContext } from './contexts/DevAdminContext';
 import { getSafeEnvironment } from './utils/envGuard';
 import DevToolsButton from './components/DevToolsButton';
 import DevToolsPanel, { ToolSection } from './components/DevToolsPanel';
-import { FileSpreadsheet } from 'lucide-react';
+import DevToolsSections from './components/DevToolsSections';
+import { FileSpreadsheet, Calendar, Calculator, TestTube, Trash2, RotateCw, Play, StopCircle, AlertCircle, CheckCircle } from 'lucide-react';
 
 function isMobile() {
   if (typeof navigator === "undefined") return false;
@@ -4760,32 +4761,55 @@ function StyledForm() {
               window.location.reload();
             }}
           >
-            {/* Dev Tools Quick Actions */}
+            {/* Dev Tools Sections */}
             {getEffectiveUIEnv() === 'dev' && (
-              <>
-                <ToolSection
-                  icon={<FileSpreadsheet size={20} />}
-                  title="Quick Info"
-                  description="Current environment and status"
-                >
-                  <div style={{ fontSize: '13px', color: '#d1d5db' }}>
-                    <div style={{ marginBottom: '8px' }}>
-                      <span style={{ color: '#9ca3af' }}>Environment:</span>{' '}
-                      <span style={{ fontWeight: 'bold', color: '#10b981' }}>{getEffectiveUIEnv()}</span>
-                    </div>
-                    <div style={{ marginBottom: '8px' }}>
-                      <span style={{ color: '#9ca3af' }}>Status:</span>{' '}
-                      <span style={{ color: '#3b82f6' }}>Dev Tools Active</span>
-                    </div>
-                    <div style={{ padding: '12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '6px', marginTop: '12px' }}>
-                      <div style={{ fontSize: '12px', color: '#93c5fd', marginBottom: '4px' }}>ℹ️ Info</div>
-                      <div style={{ fontSize: '12px', color: '#d1d5db' }}>
-                        Full dev tools sections are located below the main form. They will be migrated into this panel in the next update.
-                      </div>
-                    </div>
-                  </div>
-                </ToolSection>
-              </>
+              <DevToolsSections
+                // Sheet Creator props
+                selectedMonth={selectedMonth}
+                setSelectedMonth={setSelectedMonth}
+                selectedYear={selectedYear}
+                setSelectedYear={setSelectedYear}
+                handleCreateSheet={handleCreateSheet}
+                handleCreateProdSheet={handleCreateProdSheet}
+                isCreatingSheet={isCreatingSheet}
+
+                // Manual Testing props
+                manualTestData={manualTestData}
+                handleManualTestChange={handleManualTestChange}
+                handleSubmitManualTest={handleSubmitManualTest}
+                isSubmittingManualTest={isSubmittingManualTest}
+                manualTestOTResult={manualTestOTResult}
+                clearManualTest={clearManualTest}
+
+                // Day of Week Updater props
+                dayOfWeekUpdaterData={dayOfWeekUpdaterData}
+                handleDayOfWeekUpdaterChange={handleDayOfWeekUpdaterChange}
+                handleUpdateDayOfWeek={handleUpdateDayOfWeek}
+                isUpdatingDayOfWeek={isUpdatingDayOfWeek}
+
+                // Manual OT Calculation props
+                manualOTData={manualOTData}
+                setManualOTData={setManualOTData}
+                handleManualOTChange={handleManualOTChange}
+                handleCalculateOT={handleCalculateOT}
+                isCalculatingOT={isCalculatingOT}
+                manualOTResult={manualOTResult}
+                otCalculationData={otCalculationData}
+                handleReadRow={handleReadRow}
+                isReadingRow={isReadingRow}
+
+                // Dev Tool Buttons props
+                testAutoSubmit={testAutoSubmit}
+                clearExistingEntryCache={clearExistingEntryCache}
+                isLoadingData={isLoadingData}
+                setIsLoadingData={setIsLoadingData}
+                setIsSubmitting={setIsSubmitting}
+                approvalEnabled={approvalEnabled}
+                setApprovalEnabled={setApprovalEnabled}
+
+                // Other props
+                browserLang={browserLang}
+              />
             )}
           </DevToolsPanel>
         </>
