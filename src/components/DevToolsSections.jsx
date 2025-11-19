@@ -210,8 +210,8 @@ export default function DevToolsSections({
               <input
                 type="text"
                 placeholder="e.g., 08:00"
-                value={manualTestData?.clockIn || ''}
-                onChange={(e) => handleManualTestChange('clockIn', e.target.value)}
+                value={manualTestData?.testClockIn || ''}
+                onChange={(e) => handleManualTestChange('testClockIn', e.target.value)}
                 style={panelStyles.input}
               />
             </div>
@@ -220,8 +220,8 @@ export default function DevToolsSections({
               <input
                 type="text"
                 placeholder="e.g., 18:00"
-                value={manualTestData?.clockOut || ''}
-                onChange={(e) => handleManualTestChange('clockOut', e.target.value)}
+                value={manualTestData?.testClockOut || ''}
+                onChange={(e) => handleManualTestChange('testClockOut', e.target.value)}
                 style={panelStyles.input}
               />
             </div>
@@ -232,8 +232,8 @@ export default function DevToolsSections({
             <input
               type="text"
               placeholder="e.g., Manual test for business rule"
-              value={manualTestData?.comments || ''}
-              onChange={(e) => handleManualTestChange('comments', e.target.value)}
+              value={manualTestData?.testComments || ''}
+              onChange={(e) => handleManualTestChange('testComments', e.target.value)}
               style={panelStyles.input}
             />
           </div>

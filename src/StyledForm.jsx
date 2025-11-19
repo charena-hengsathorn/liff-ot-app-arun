@@ -2190,6 +2190,19 @@ function StyledForm() {
     }));
   };
 
+  // Clear manual test form
+  const clearManualTest = () => {
+    setManualTestData(prev => ({
+      ...prev,
+      testDate: '',
+      testUser: '',
+      testClockIn: '',
+      testClockOut: '',
+      testComments: ''
+      // Keep testEnvironment, testSpreadsheet, and availableSheets
+    }));
+  };
+
   // Calculate OT hours for manual testing (frontend calculation)
   const calculateManualTestOT = () => {
     const { testDate, testClockOut } = manualTestData;
