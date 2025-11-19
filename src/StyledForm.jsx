@@ -6,6 +6,7 @@ import { useDevAdminContext } from './contexts/DevAdminContext';
 import { getSafeEnvironment } from './utils/envGuard';
 import DevToolsButton from './components/DevToolsButton';
 import DevToolsPanel, { ToolSection } from './components/DevToolsPanel';
+import { FileSpreadsheet } from 'lucide-react';
 
 function isMobile() {
   if (typeof navigator === "undefined") return false;
