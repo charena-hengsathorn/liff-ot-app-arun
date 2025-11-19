@@ -197,7 +197,10 @@ function StyledForm() {
 
   // Dev Tools Panel state
   const [isDevPanelOpen, setIsDevPanelOpen] = useState(false);
-  
+
+  // Mobile menu state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   // Add CSS animation for modal
   useEffect(() => {
     const style = document.createElement('style');
@@ -2760,49 +2763,220 @@ function StyledForm() {
       }}
       onClick={closeAllDropdowns}
     >
-      {/* Logout Button - Outside form, upper right */}
-      <button
-        type="button"
-        onClick={handleLogout}
-        title="Logout"
-        style={{
+      {/* Mobile Header Bar */}
+      {isMobile() && (
+        <div style={{
           position: 'fixed',
-          top: '20px',
-          right: '20px',
-          zIndex: 1001,
-          padding: isMobile() ? '8px 12px' : '10px 16px',
-          fontSize: '16px',
-          borderRadius: '17px',
-          background: isDarkMode ? '#27272a' : '#fff',
-          color: isDarkMode ? '#f1f5f9' : '#333',
-          cursor: 'pointer',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '56px',
+          background: isDarkMode ? '#1f2937' : '#ffffff',
+          borderBottom: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-          transition: 'all 0.2s ease',
-          border: 'none',
-          fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
-          fontWeight: '500'
-        }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.transform = 'translateY(-2px)';
-          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-        }}
-      >
-        🚪
-        {!isMobile() && <span>Logout</span>}
-      </button>
+          justifyContent: 'space-between',
+          padding: '0 16px',
+          zIndex: 1000,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}>
+          {/* Hamburger Menu Button */}
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ width: '24px', height: '2px', background: isDarkMode ? '#f1f5f9' : '#374151', borderRadius: '2px' }}></div>
+              <div style={{ width: '24px', height: '2px', background: isDarkMode ? '#f1f5f9' : '#374151', borderRadius: '2px' }}></div>
+              <div style={{ width: '24px', height: '2px', background: isDarkMode ? '#f1f5f9' : '#374151', borderRadius: '2px' }}></div>
+            </div>
+          </button>
+
+          {/* Language Switcher in Header */}
+          <button
+            type="button"
+            onClick={() => {
+              const newLang = browserLang === 'th' ? 'en' : 'th';
+              const currentPath = window.location.pathname;
+              if (currentPath === '/prod') {
+                setBrowserLang(newLang);
+                setCookie('preferredLanguage', newLang, 365);
+              } else {
+                const newPath = newLang === 'th' ? '/th' : '/en';
+                navigate(newPath, { replace: true });
+              }
+            }}
+            style={{
+              padding: '6px 12px',
+              fontSize: '16px',
+              borderRadius: '17px',
+              background: isDarkMode ? '#27272a' : '#f9fafb',
+              color: isDarkMode ? '#f1f5f9' : '#333',
+              cursor: 'pointer',
+              border: 'none',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+            }}
+          >
+            {browserLang === 'th' ? '🇹🇭' : '🇺🇸'}
+          </button>
+        </div>
+      )}
+
+      {/* Mobile Slide Menu */}
+      {isMobile() && (
+        <>
+          {/* Backdrop */}
+          {isMobileMenuOpen && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                zIndex: 1100,
+                transition: 'opacity 0.3s ease'
+              }}
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+          )}
+
+          {/* Sliding Menu Panel */}
+          <div
+            style={{
+              position: 'fixed',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '280px',
+              background: isDarkMode ? 'linear-gradient(135deg, #1f2937 0%, #111827 100%)' : '#ffffff',
+              boxShadow: '2px 0 8px rgba(0,0,0,0.15)',
+              transform: isMobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform 0.3s ease',
+              zIndex: 1101,
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            {/* Menu Header */}
+            <div style={{
+              padding: '16px',
+              borderBottom: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: '18px',
+                fontWeight: '600',
+                color: isDarkMode ? '#f1f5f9' : '#374151',
+                fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
+              }}>
+                Menu
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '24px',
+                  color: isDarkMode ? '#9ca3af' : '#6b7280',
+                  padding: '4px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Menu Content - Spacer */}
+            <div style={{ flex: 1 }}></div>
+
+            {/* Logout Button at Bottom */}
+            <div style={{
+              padding: '16px',
+              borderTop: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb'
+            }}>
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  borderRadius: '8px',
+                  background: isDarkMode ? '#dc2626' : '#ef4444',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
+                }}
+              >
+                🚪 <span>Logout</span>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Desktop Logout Button - Only show on desktop */}
+      {!isMobile() && (
+        <button
+          type="button"
+          onClick={handleLogout}
+          title="Logout"
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            zIndex: 1001,
+            padding: '10px 16px',
+            fontSize: '16px',
+            borderRadius: '17px',
+            background: isDarkMode ? '#27272a' : '#fff',
+            color: isDarkMode ? '#f1f5f9' : '#333',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            transition: 'all 0.2s ease',
+            border: 'none',
+            fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
+            fontWeight: '500'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+          }}
+        >
+          🚪 <span>Logout</span>
+        </button>
+      )}
 
       <form
         style={{
           width: "80vw",
           maxWidth: 500,
-          margin: "0 auto",
+          margin: isMobile() ? "66px auto 0" : "0 auto",
           border: isDarkMode ? "1px solid #334155" : "1px solid #ccc",
           borderRadius: "18px",
           boxShadow: isDarkMode
@@ -2820,13 +2994,14 @@ function StyledForm() {
         autoComplete="off"
         onSubmit={handleSubmit}
       >
-        {/* Language Switcher Button */}
-        <div style={{
-          position: 'absolute',
-          top: '17px',
-          right: '20px',
-          zIndex: 1000
-        }}>
+        {/* Language Switcher Button - Desktop Only */}
+        {!isMobile() && (
+          <div style={{
+            position: 'absolute',
+            top: '17px',
+            right: '20px',
+            zIndex: 1000
+          }}>
           <button
             type="button"
             onClick={() => {
@@ -2870,8 +3045,9 @@ function StyledForm() {
           >
             {browserLang === 'th' ? '🇹🇭' : '🇺🇸'}
           </button>
-        </div>
-        
+          </div>
+        )}
+
         <h1 style={{ 
           textAlign: "center", 
           marginBottom: 10, 
