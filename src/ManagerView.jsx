@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getAPIBaseURL } from './config/api';
 
 function isMobile() {
   if (typeof navigator === "undefined") return false;
@@ -24,12 +25,9 @@ function ManagerView() {
   // Track which driver images failed to load
   const [failedImages, setFailedImages] = useState(new Set());
 
-  // API Configuration
-  // Only use localhost if we're actually running on localhost (for local development)
-  const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const API_BASE_URL = isLocalDev
-    ? 'http://localhost:3001'
-    : 'https://liff-ot-app-arun-d0ff4972332c.herokuapp.com';
+  // API Configuration - Uses centralized config with environment variables
+  // Supports VITE_API_BASE_URL_DEV and VITE_API_BASE_URL_PROD from .env
+  const API_BASE_URL = getAPIBaseURL();
 
   // Dark mode detection
   useEffect(() => {
@@ -194,7 +192,7 @@ function ManagerView() {
     // Store the action to execute after confirmation
     const deleteAction = async () => {
       try {
-        await Promise.all(
+        const responses = await Promise.all(
           driverIds.map(id =>
             fetch(`${API_BASE_URL}/api/drivers/${id}`, {
               method: 'DELETE',
@@ -204,6 +202,19 @@ function ManagerView() {
             })
           )
         );
+
+        // Check if all responses are successful
+        const failedDeletes = [];
+        for (let i = 0; i < responses.length; i++) {
+          if (!responses[i].ok) {
+            const driver = drivers.find(d => d.id === driverIds[i]);
+            failedDeletes.push(driver?.name || `ID: ${driverIds[i]}`);
+          }
+        }
+
+        if (failedDeletes.length > 0) {
+          throw new Error(`Failed to delete: ${failedDeletes.join(', ')}`);
+        }
 
         setSelectedDrivers(new Set());
         setActionMode(null);
