@@ -577,41 +577,46 @@ export async function validateDevAdminCredentials(username, password) {
 - [x] Deploy to Heroku (v75)
 - [x] Document implementation (DEVADMIN_IMPLEMENTATION.md)
 
-#### Frontend Tasks:
-- [ ] Create `src/components/DevAdminLogin.jsx`
-- [ ] Create `src/contexts/DevAdminContext.jsx`
-- [ ] Create `src/hooks/useDevAdmin.js`
-- [ ] Add devadmin login route in router
-- [ ] Style login form (Tailwind)
-- [ ] Implement error handling for failed auth
-- [ ] Add logout functionality
-- [ ] Test login flow in browser
+#### Frontend Tasks: ✅ **COMPLETED - Nov 18, 2025**
+- [x] Create `src/components/DevAdminLogin.jsx` (250 lines - Tailwind styled)
+- [x] Create `src/contexts/DevAdminContext.jsx` (68 lines - Global state)
+- [x] Create `src/hooks/useDevAdmin.js` (172 lines - Auth hook)
+- [x] Add devadmin login route in router (App.jsx - `/devadmin-login`)
+- [x] Style login form (Tailwind - gradient, responsive, accessible)
+- [x] Implement error handling for failed auth (error messages, loading states)
+- [x] Add logout functionality (clearDevAdminCookie, logout endpoint)
+- [x] Test login flow in browser (local testing completed)
 
-### **Phase 2: Conditional Dev Tools**
+### **Phase 2: Conditional Dev Tools** ✅ **COMPLETED - Nov 18, 2025**
 
 #### Frontend Tasks:
-- [ ] Update `src/components/StyledForm.jsx`:
-  - [ ] Import `useDevAdmin` hook
-  - [ ] Wrap dev tools section with `{isDevAdmin && ...}`
-  - [ ] Test dev tools visibility
-- [ ] Update environment toggle component:
-  - [ ] Import `useDevAdmin` hook
-  - [ ] Conditionally render toggle button
-  - [ ] Test toggle visibility
-- [ ] Create `src/utils/envGuard.js`:
-  - [ ] Export `getEnvironment()` function
-  - [ ] Force `prod` for non-devadmin
-  - [ ] Allow `dev` for devadmin only
-- [ ] Update all API calls:
-  - [ ] Use `getEnvironment()` instead of direct `env` state
-  - [ ] Test environment locking
-- [ ] Hide manual testing forms:
-  - [ ] OT calculation test
-  - [ ] Day of Week updater
-  - [ ] Sheet selector
-  - [ ] All other dev-only features
-- [ ] Test with regular user account (no dev tools visible)
-- [ ] Test with devadmin account (all dev tools visible)
+- [x] Update `src/components/StyledForm.jsx`:
+  - [x] Import `useDevAdmin` hook
+  - [x] Wrap dev tools section with `{isDevAdmin && ...}`
+  - [x] Test dev tools visibility
+- [x] Update environment toggle component:
+  - [x] Import `useDevAdmin` hook
+  - [x] Conditionally render toggle button (top-right)
+  - [x] Test toggle visibility (only DevAdmin sees it)
+- [x] Create `src/utils/envGuard.js` (98 lines):
+  - [x] Export `getEnvironment()` function
+  - [x] Force `prod` for non-devadmin
+  - [x] Allow `dev` for devadmin only
+  - [x] Added `getSafeEnvironment()` with logging
+- [x] Update all API calls:
+  - [x] Imported `getSafeEnvironment()` from envGuard
+  - [x] Test environment locking (verified)
+- [x] Hide manual testing forms:
+  - [x] OT calculation test
+  - [x] Day of Week updater
+  - [x] Sheet selector
+  - [x] Month/Year selector
+  - [x] Create sheet buttons
+  - [x] All other dev-only features (7+ sections)
+- [x] Test with regular user account (no dev tools visible - ✅ verified)
+- [x] Test with devadmin account (all dev tools visible - ✅ verified)
+- [x] Document Phase 2 implementation (DEVADMIN_IMPLEMENTATION.md updated)
+- [x] Commit all changes (Git commit: 22f8750, 1ba13a8)
 
 ### **Phase 3: Approval Handler Integration**
 
