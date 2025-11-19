@@ -1,1730 +1,1842 @@
 # AGENTS.md - AI Agent Instructions for LIFF OT App
 
-> **Last Updated:** November 14, 2025  
+> **Last Updated:** November 16, 2025  
 > **Project:** LIFF OT App (Arun Team)  
-> **Critical Deadline:** Production database must be live by Monday
+> **Current Phase:** Feature Enhancement - Role-Based Dev Tools & Approval System
 
 ---
 
-## 🎯 CURRENT MISSION: PRODUCTION DATABASE MIGRATION
+## 🎯 CURRENT MISSION: IMPLEMENT DEV ACCESS CONTROL & APPROVAL SYSTEM
 
-### **PRIORITY 1: Create NEW Heroku App & Attach Strapi Database**
+### **PRIORITY 1: DevAdmin Role & Hidden Dev Tools**
 
-**Deadline:** Monday (Arun team starts using on Monday)
+**Objective:** Create a special `devadmin` authentication that has exclusive access to dev tools and environment toggle, while keeping these features hidden from regular users.
 
-**CRITICAL UPDATE FROM PM:**
-```
-"Remove the old heroku production links and make a new production 
-heroku on YOUR account and connect it there instead"
-
-"The most important priority is to attach the strapi database to 
-the production server which is to be used by Arun team on Monday"
-```
+**Business Context:**
+- The system currently has dev tools and environment toggle visible to all users
+- For production deployment, these should be hidden from regular users
+- A special `devadmin` needs privileged access using environment-based credentials
+- Single shared credential for simplicity (stored securely in env vars)
 
 **Current Status:**
-- ✅ Frontend: Deployed on Vercel (https://liff-ot-app-arun.vercel.app)
-- ⚠️ Backend: Currently on PM's Heroku (https://liff-ot-app-positive.herokuapp.com)
-- ❌ **Need to create NEW Heroku app on YOUR account** ⚠️
-- ❌ **Strapi Database: NOT connected to production PostgreSQL** ⚠️
-- ❌ **Using SQLite locally (not production-ready)**
+- ✅ Dev tools implemented in UI (StyledForm.jsx)
+- ✅ Environment toggle (dev/prod) implemented
+- ❌ **No role-based access control for dev tools**
+- ❌ **Dev tools visible to all users**
+- ❌ **No devadmin user implementation**
 
-**Required Actions:**
-1. **Create YOUR own Heroku account** (if you don't have one)
-2. **Create NEW Heroku app** on your account (e.g., liff-ot-app-arun)
-3. **Add PostgreSQL database** to your new Heroku app
-4. **Configure Strapi** to use PostgreSQL in production
-5. **Deploy everything** to YOUR new Heroku app
-6. **Update frontend** to point to your new backend URL
-7. **Migrate/seed initial data** (drivers)
-8. **Test end-to-end integration**
-9. **Remove references** to old Heroku app
-10. **Handoff to Arun team** with documentation
+**⚠️ IMPORTANT: This feature is completely separate from the approval system and should be implemented independently.**
 
 ---
 
-## 📋 PROJECT OVERVIEW
+### **PRIORITY 2: Functional Approval Handler**
 
-### What This System Does
-A LINE LIFF-based attendance tracking system for drivers that:
-- Tracks daily clock-in/clock-out times
-- Automatically calculates overtime (OT) hours
-- Saves data to Google Sheets (primary) + Strapi database (secondary)
-- Sends LINE notifications to managers
-- Multi-language support (Thai/English)
+**Objective:** Make the approval system fully functional with web UI as primary interface and LINE as notification channel.
 
-### Technology Stack
-```
-Frontend:  React 19 + Vite 7 + Tailwind + LINE LIFF SDK
-Backend:   Express.js + Node.js
-CMS:       Strapi 5.30.0
-Database:  PostgreSQL (prod) / SQLite (dev) ← NEEDS PRODUCTION SETUP
-APIs:      Google Sheets API, LINE Messaging API
-Hosting:   Vercel (frontend) + Heroku (backend)
-```
+**Current Status:**
+- ✅ approvalHandler.js file exists in backend
+- ❌ **Not integrated with attendance flow**
+- ❌ **No approval UI for managers**
+- ❌ **No approval status tracking**
 
-### Key Integrations
-1. **Google Sheets** - Primary data storage (managers view here)
-2. **LINE LIFF** - Mobile app interface (runs inside LINE app)
-3. **LINE Messaging** - Real-time notifications to manager groups
-4. **Strapi CMS** - Driver management, user authentication
+**⚠️ IMPORTANT: This feature is completely separate from dev tools and should be implemented independently.**
 
 ---
 
----
+## 📋 DEVELOPMENT ROADMAP
 
-## 💡 UNDERSTANDING "ATTACH THE DATABASE" (Read This First!)
+### **Phase 1: DevAdmin Authentication System** (Days 1-2)
 
-### **What Your PM Is Really Asking For**
+**Goal:** Implement environment-based devadmin authentication without database changes
 
-When PM says: *"Attach the Strapi database to the production server"*
+#### Tasks:
 
-**It means:**
-1. **Create YOUR own Heroku account and app** (not use PM's)
-2. **Add PostgreSQL database** to your new Heroku app
-3. **Configure Strapi** to use PostgreSQL instead of SQLite
-4. **Deploy everything** to YOUR Heroku app
-5. **Update frontend** to point to your new backend
+1. **Environment Variable Configuration**
+   ```bash
+   # Add to Heroku config
+   DEVADMIN_USERNAME=devadmin
+   DEVADMIN_PASSWORD=<secure_password>
+   
+   # Local .env.local
+   VITE_DEVADMIN_USERNAME=devadmin
+   VITE_DEVADMIN_PASSWORD=<secure_password>
+   ```
 
-### **Why This Matters**
+2. **Backend: Create DevAdmin Authentication Endpoint**
+   - **File:** `backend/server.mjs`
+   - **New Endpoint:** `POST /auth/devadmin`
+   - **Purpose:** Authenticate devadmin separately from Strapi users
+   
+   ```javascript
+   // Endpoint specification
+   POST /auth/devadmin
+   Body: {
+     username: string,
+     password: string
+   }
+   Response: {
+     success: boolean,
+     token: string (JWT),
+     user: {
+       username: "devadmin",
+       role: "devadmin"
+     }
+   }
+   ```
 
-**Current Problem:**
-- Strapi is probably using **SQLite** (file-based database)
-- SQLite file gets **deleted** when Heroku restarts
-- You **lose all data** (drivers, users, attendance records)
-- **Not production-ready!**
+3. **Backend: JWT Token Generation for DevAdmin**
+   - Use existing JWT secret
+   - Token payload includes: `{ username, role: 'devadmin' }`
+   - Token expiry: 24 hours
+   - Return JWT in response and set httpOnly cookie
 
-**Solution:**
-- Use **PostgreSQL** (professional database server)
-- Database is **separate service** on Heroku
-- Data is **persistent** (never deleted)
-- **Production-ready!**
+4. **Frontend: DevAdmin Login Component**
+   - **File:** `src/components/DevAdminLogin.jsx` (NEW)
+   - Simple login form (username + password)
+   - Store JWT in localStorage + cookie
+   - Redirect to main app after successful login
+   - Show error message on failed authentication
 
-### **What "Attaching" Means (Step-by-Step)**
-
-Think of it like connecting a printer to your computer:
-
-```
-Step 1: Buy a printer (Create PostgreSQL database)
-↓
-Step 2: Get printer cable (Heroku gives you DATABASE_URL)
-↓
-Step 3: Plug cable into computer (Configure Strapi to use DATABASE_URL)
-↓
-Step 4: Turn on printer (Deploy Strapi)
-↓
-Step 5: Printer works! (Strapi uses PostgreSQL)
-```
-
-**In Technical Terms:**
-
-```
-1. heroku addons:create postgresql
-   → Creates PostgreSQL database
-   → Heroku automatically sets DATABASE_URL environment variable
-   → DATABASE_URL contains connection string (username, password, host, port)
-
-2. Edit: backend/strapi/config/env/production/database.js
-   → Tell Strapi to use PostgreSQL
-   → Read DATABASE_URL from environment
-   → Configure SSL connection
-
-3. git push heroku main
-   → Deploy Strapi to Heroku
-   → Strapi reads DATABASE_URL
-   → Strapi connects to PostgreSQL
-   → Strapi creates tables automatically
-
-4. Database is now "attached"!
-   → Strapi saves data to PostgreSQL
-   → Data persists forever
-   → No more data loss
-```
-
-### **Visual Explanation**
-
-**BEFORE (Using SQLite - BAD for Production):**
-```
-┌──────────────────────┐
-│  Heroku Dyno         │
-│  ┌────────────────┐  │
-│  │ Your App       │  │
-│  │  ├── Express   │  │
-│  │  └── Strapi ───┼──┼──→ SQLite File (data.db)
-│  │                │  │         ↑
-│  └────────────────┘  │         │
-└──────────────────────┘    Stored in dyno
-                            (gets deleted on restart!)
-                            
-Problems:
-❌ Data in SQLite file
-❌ File stored on dyno filesystem
-❌ Dyno restarts = file deleted
-❌ All data LOST!
-```
-
-**AFTER (Using PostgreSQL - GOOD for Production):**
-```
-┌──────────────────────┐
-│  Heroku Dyno         │
-│  ┌────────────────┐  │
-│  │ Your App       │  │
-│  │  ├── Express   │  │
-│  │  └── Strapi    │  │
-│  │       ↓        │  │
-│  │  DATABASE_URL  │  │
-│  └───────┼────────┘  │
-└──────────┼───────────┘
-           │ Connection String
-           │ (postgres://user:pass@host:5432/db)
-           ↓
-┌──────────────────────┐
-│ PostgreSQL Database  │  ← Separate service
-│ (Heroku Add-on)      │  ← Persistent storage
-│                      │  ← Never deleted
-│ ┌──────────────────┐ │
-│ │ Tables:          │ │
-│ │ - drivers        │ │
-│ │ - attendances    │ │
-│ │ - users          │ │
-│ │ - admin_users    │ │
-│ └──────────────────┘ │
-└──────────────────────┘
-
-Benefits:
-✅ Data in PostgreSQL server
-✅ Separate from app
-✅ Dyno restarts = no problem
-✅ Data SAFE and persistent!
-```
-
-### **Why PM Wants NEW Heroku App (Not PM's Old One)**
-
-**PM Said:**
-```
-"Remove the old heroku production links and make a new production 
-heroku on YOUR account and connect it there instead"
-```
-
-**Reasons:**
-
-1. **Ownership & Control**
-   - Old app: On PM's account → PM must deploy for you
-   - New app: On YOUR account → You can deploy anytime
-
-2. **Learning Experience**
-   - You learn full production setup
-   - You understand deployment process
-   - You can troubleshoot issues yourself
-
-3. **Independence**
-   - Can scale independently
-   - Can manage database yourself
-   - Can add services as needed
-
-4. **Clean Start**
-   - No legacy configs
-   - Fresh production environment
-   - Best practices from day 1
-
-### **What You'll Actually Do (High-Level)**
-
-```
-Day 1 (Friday):
-├── Create Heroku account (if needed)
-├── Install Heroku CLI
-├── Create new Heroku app (liff-ot-app-arun)
-├── Add PostgreSQL database
-└── Verify database is working
-
-Day 2 (Saturday):
-├── Configure Strapi for PostgreSQL
-├── Set environment variables on Heroku
-├── Create production config files
-└── Deploy backend to YOUR Heroku
-
-Day 3 (Sunday):
-├── Create Strapi admin account
-├── Import driver data
-├── Update frontend to use new backend
-├── Test everything thoroughly
-└── Write documentation
-
-Monday:
-└── Handoff to Arun team
-    ├── Provide admin credentials
-    ├── Share documentation
-    └── System ready for production use!
-```
+5. **Frontend: Auth Context Enhancement**
+   - **File:** Update existing auth context or create new
+   - Track two auth states:
+     - Regular user (Strapi)
+     - DevAdmin user (environment-based)
+   - Provide `isDevAdmin` boolean flag
+   - Provide logout for both user types
 
 ---
 
-## 🏗️ CURRENT ARCHITECTURE
+### **Phase 2: Conditional Dev Tools Rendering** (Days 2-3)
+
+**Goal:** Hide dev tools and environment toggle from non-devadmin users
+
+#### Tasks:
+
+1. **Create useDevAdmin Hook**
+   - **File:** `src/hooks/useDevAdmin.js` (NEW)
+   - Check JWT token for devadmin role
+   - Validate token on mount
+   - Return `{ isDevAdmin: boolean, loading: boolean }`
+
+2. **Update StyledForm.jsx**
+   - **File:** `src/components/StyledForm.jsx`
+   - Import `useDevAdmin` hook
+   - Wrap dev tools section with conditional rendering:
+   
+   ```jsx
+   const { isDevAdmin } = useDevAdmin();
+   
+   // Only render if devadmin
+   {isDevAdmin && (
+     <div className="dev-tools">
+       {/* Development Tools Section */}
+     </div>
+   )}
+   ```
+
+3. **Update Environment Toggle**
+   - **Location:** Header/Navbar component
+   - Conditional rendering based on `isDevAdmin`
+   - Hide toggle button completely for regular users
+   - Default to `prod` environment for non-devadmin
+
+4. **Environment Safety Guard**
+   - **File:** `src/utils/envGuard.js` (NEW)
+   - Prevent non-devadmin from accessing dev environment
+   - Force `env=prod` in all API calls for regular users
+   - Only allow `env=dev` if `isDevAdmin === true`
+
+5. **Update All Dev Tool References**
+   - Manual testing form
+   - OT calculation testing
+   - Day of Week column updater
+   - Sheet selector
+   - Environment preview
+   - All wrapped with `isDevAdmin` check
+
+---
+
+### **Phase 3: Approval Handler Integration** (Days 3-4)
+
+**Goal:** Make approvalHandler.js functional and integrated with the system
+
+#### Tasks:
+
+1. **Analyze approvalHandler.js**
+   - **File:** `backend/utils/approvalHandler.js`
+   - Document current implementation
+   - Identify missing pieces
+   - Determine integration points
+
+2. **LINE Webhook Enhancement**
+   - **File:** `backend/server.mjs` (webhook endpoint)
+   - Integrate approvalHandler logic
+   - Parse LINE messages for approval commands
+   - Expected commands:
+     - `approve [driver_name] [date]`
+     - `reject [driver_name] [date]`
+     - `approve all`
+
+3. **Approval Logic Implementation**
+   - Update Google Sheets with approval status
+   - Add "Approval Status" column if not exists
+   - Possible values: "Pending", "Approved", "Rejected"
+   - Update Strapi attendance record (if exists)
+
+4. **Notification Flow**
+   - When attendance submitted → status = "Pending"
+   - Send notification to manager LINE group
+   - Manager responds with command
+   - Update status in Google Sheets
+   - Send confirmation to manager
+   - Optionally notify driver
+
+5. **Backend API for Approval Status**
+   - **New Endpoint:** `GET /api/attendances/:id/approval-status`
+   - **New Endpoint:** `POST /api/attendances/:id/approve`
+   - **New Endpoint:** `POST /api/attendances/:id/reject`
+   - Allow programmatic approval (for future UI)
+
+---
+
+### **Phase 4: UI Enhancements for Approval** (Days 4-5)
+
+**Goal:** Show approval status in UI and provide visual feedback
+
+#### Tasks:
+
+1. **StyledForm.jsx Enhancement**
+   - Show approval status after submission
+   - Display badge: "Pending Approval", "Approved", "Rejected"
+   - Color coding: Yellow (pending), Green (approved), Red (rejected)
+
+2. **ManagerView.jsx Enhancement**
+   - Add approval status column to driver table
+   - Add filter: Show all / Pending / Approved / Rejected
+   - Add bulk approval actions (devadmin only)
+
+3. **Approval History**
+   - **New Component:** `src/components/ApprovalHistory.jsx`
+   - Show approval timeline for each attendance record
+   - Who approved/rejected and when
+   - Comments from manager (if any)
+
+4. **Real-time Status Updates (Optional)**
+   - Poll approval status every 30 seconds after submission
+   - Show notification when status changes
+   - Use Lottie animation for status changes
+
+---
+
+### **Phase 5: Testing & Security Hardening** (Days 5-6)
+
+**Goal:** Ensure security, test all scenarios, and prepare for production
+
+#### Tasks:
+
+1. **Security Checklist**
+   - ✅ DevAdmin credentials in environment variables (not in code)
+   - ✅ JWT tokens properly validated
+   - ✅ No client-side exposure of credentials
+   - ✅ Dev tools inaccessible without devadmin role
+   - ✅ Environment variable validation on backend
+   - ✅ Rate limiting on auth endpoints
+   - ✅ HTTPS only for production
+
+2. **Testing Scenarios**
+   
+   **DevAdmin Authentication:**
+   - ✅ Successful login with correct credentials
+   - ✅ Failed login with wrong credentials
+   - ✅ Token expiry and refresh
+   - ✅ Logout functionality
+   - ✅ Multiple concurrent devadmin sessions
+   
+   **Dev Tools Access:**
+   - ✅ DevAdmin can see all dev tools
+   - ✅ Regular users cannot see dev tools
+   - ✅ DevAdmin can toggle environment
+   - ✅ Regular users locked to prod environment
+   - ✅ Direct URL access to dev features blocked for regular users
+   
+   **Approval Handler:**
+   - ✅ Approval command from LINE updates status
+   - ✅ Rejection command from LINE updates status
+   - ✅ Invalid commands ignored
+   - ✅ Duplicate approval prevented
+   - ✅ Status reflected in Google Sheets
+   - ✅ Status reflected in Strapi
+   - ✅ Notifications sent correctly
+   
+   **Integration:**
+   - ✅ End-to-end: Submit → Pending → Approve → Approved
+   - ✅ End-to-end: Submit → Pending → Reject → Rejected
+   - ✅ UI updates reflect approval status
+   - ✅ Both dev and prod environments work
+
+3. **Error Handling**
+   - Authentication failures
+   - Network errors
+   - Google Sheets API failures
+   - LINE API failures
+   - Invalid approval commands
+   - Race conditions (concurrent approvals)
+
+4. **Performance Testing**
+   - Auth endpoint response time
+   - Token validation overhead
+   - Approval processing time
+   - UI rendering with approval status
+
+---
+
+## 🏗️ ARCHITECTURE CHANGES
+
+### **Before: Current Architecture**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │              LINE LIFF Frontend (React)                      │
-│         https://liff-ot-app-arun.vercel.app                 │
+│         Deployed on Heroku (separate from backend)           │
+│                                                              │
+│  - Dev tools visible to ALL users ⚠️                        │
+│  - Environment toggle visible to ALL ⚠️                     │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      │ HTTP/REST
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │         Express Backend + Strapi (Node.js)                   │
-│      https://liff-ot-app-positive.herokuapp.com             │
 │                                                              │
-│  ⚠️  CURRENT ISSUE: Strapi using SQLite (not production)    │
-│  ✅  GOAL: Connect Strapi to PostgreSQL on Heroku           │
+│  - Strapi authentication only                               │
+│  - No role-based access control ⚠️                          │
+│  - approvalHandler.js exists but not integrated ⚠️          │
 └──────┬──────────────┬──────────────┬────────────────────────┘
        │              │              │
        ▼              ▼              ▼
    Google         LINE           Strapi DB
-   Sheets       Messaging      (SQLite → PostgreSQL)
-                                    ↑
-                              MIGRATION NEEDED
+   Sheets       Messaging        (PostgreSQL)
+```
+
+### **After: Enhanced Architecture**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              LINE LIFF Frontend (React)                      │
+│         Deployed on Heroku (separate from backend)           │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ Authentication Layer (Enhanced)                        │ │
+│  │  - Regular user (Strapi) ✅                            │ │
+│  │  - DevAdmin user (ENV-based) ✅ NEW                    │ │
+│  │  - useDevAdmin hook ✅ NEW                             │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ Conditional Rendering (Role-Based)                     │ │
+│  │                                                         │ │
+│  │  IF isDevAdmin:                                        │ │
+│  │    ✅ Show dev tools                                   │ │
+│  │    ✅ Show environment toggle                          │ │
+│  │    ✅ Allow dev environment access                     │ │
+│  │                                                         │ │
+│  │  ELSE (Regular User):                                  │ │
+│  │    ❌ Hide dev tools                                   │ │
+│  │    ❌ Hide environment toggle                          │ │
+│  │    🔒 Lock to prod environment                         │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ Approval Status Display ✅ NEW                         │ │
+│  │  - Pending / Approved / Rejected badges                │ │
+│  │  - Real-time status updates                            │ │
+│  │  - Approval history timeline                           │ │
+│  └────────────────────────────────────────────────────────┘ │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     │ HTTP/REST
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│         Express Backend + Strapi (Node.js)                   │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ NEW Authentication Endpoints                           │ │
+│  │  POST /auth/devadmin ✅                                │ │
+│  │  GET /auth/verify-devadmin ✅                          │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ Environment Variables (Heroku)                         │ │
+│  │  DEVADMIN_USERNAME ✅                                  │ │
+│  │  DEVADMIN_PASSWORD (hashed) ✅                         │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ Approval Handler Integration ✅ NEW                    │ │
+│  │                                                         │ │
+│  │  /webhook (LINE) → approvalHandler.js                 │ │
+│  │    - Parse approval commands                           │ │
+│  │    - Update Google Sheets status                       │ │
+│  │    - Update Strapi attendance                          │ │
+│  │    - Send confirmation notification                    │ │
+│  └────────────────────────────────────────────────────────┘ │
+└──────┬──────────────┬──────────────┬────────────────────────┘
+       │              │              │
+       ▼              ▼              ▼
+   Google         LINE           Strapi DB
+   Sheets       Messaging        (PostgreSQL)
+   │              │
+   │              │ Approval Commands
+   │              │ (approve/reject)
+   │              ▼
+   │         ┌─────────────┐
+   │         │ Manager     │
+   │         │ LINE Group  │
+   │         └─────────────┘
+   │
+   │ Status Column: "Pending" → "Approved" / "Rejected"
+   ▼
+┌─────────────────────────┐
+│ Google Sheets           │
+│                         │
+│ New Columns:            │
+│  - Approval Status      │
+│  - Approved By          │
+│  - Approved At          │
+└─────────────────────────┘
 ```
 
 ---
 
-## 📂 PROJECT STRUCTURE
+## 📂 NEW FILE STRUCTURE
 
 ```
 liff-ot-app-arun/
-├── src/                          # Frontend React code
+├── backend/
+│   ├── server.mjs                          # MODIFY: Add devadmin auth endpoints
+│   ├── utils/
+│   │   ├── approvalHandler.js              # MODIFY: Enhance and integrate
+│   │   ├── devAdminAuth.js                 # NEW: DevAdmin authentication logic
+│   │   └── jwtUtils.js                     # NEW: JWT token helpers
+│   └── middleware/
+│       └── devAdminMiddleware.js           # NEW: DevAdmin verification middleware
+│
+├── src/
 │   ├── components/
-│   │   ├── StyledForm.jsx       # Main attendance form (800 lines - needs refactoring)
-│   │   ├── ManagerView.jsx      # Driver management UI (600 lines)
-│   │   ├── LoginForm.jsx        # Authentication UI
-│   │   └── LoadingAnimation.jsx # Shared loading component
-│   ├── login/                   # Reusable login module
-│   └── App.jsx                  # Router and main app
+│   │   ├── StyledForm.jsx                  # MODIFY: Conditional dev tools
+│   │   ├── ManagerView.jsx                 # MODIFY: Add approval status
+│   │   ├── DevAdminLogin.jsx               # NEW: DevAdmin login form
+│   │   ├── ApprovalHistory.jsx             # NEW: Approval timeline
+│   │   └── ApprovalStatusBadge.jsx         # NEW: Status badge component
+│   │
+│   ├── hooks/
+│   │   ├── useDevAdmin.js                  # NEW: DevAdmin state hook
+│   │   └── useApprovalStatus.js            # NEW: Approval status polling
+│   │
+│   ├── contexts/
+│   │   └── DevAdminContext.jsx             # NEW: DevAdmin context provider
+│   │
+│   ├── utils/
+│   │   ├── envGuard.js                     # NEW: Environment access guard
+│   │   └── approvalUtils.js                # NEW: Approval helper functions
+│   │
+│   └── constants/
+│       └── approvalConstants.js            # NEW: Approval status constants
 │
-├── backend/                      # Backend (if separate directory)
-│   └── strapi/                  # Strapi CMS
-│       ├── config/
-│       │   ├── database.js      # ⚠️ NEEDS UPDATE: Add production config
-│       │   └── server.js        # Server configuration
-│       ├── src/
-│       │   └── api/
-│       │       ├── driver/      # Driver content type
-│       │       └── attendance/  # Attendance content type
-│       └── .env                 # ⚠️ NEEDS UPDATE: Production DATABASE_URL
-│
-├── server.mjs                    # Express backend server
-├── googleSheetsHandler.js        # Google Sheets integration
-├── package.json                  # Dependencies
-├── .env.local                    # Environment variables (local dev)
-├── google-credentials.json       # Google Service Account key
-│
-├── docs/                         # Documentation
-│   └── Guides for Use/          # Setup and deployment guides
-│
-└── AGENTS.md                     # THIS FILE - AI agent instructions
+└── .env.local                              # MODIFY: Add VITE_DEVADMIN_* variables
 ```
 
 ---
 
-## 🔥 CRITICAL FILES FOR PRODUCTION MIGRATION
+## 🔐 SECURITY IMPLEMENTATION DETAILS
 
-### Files That MUST Be Modified:
+### **DevAdmin Credential Storage**
 
-1. **`backend/strapi/config/database.js`** (or `config/env/production/database.js`)
-   - **Current:** Uses SQLite
-   - **Needed:** Add PostgreSQL configuration for production
-   - **Action:** Create production database config
+#### **Heroku Environment Variables:**
+```bash
+# Never store plain text passwords!
+# Use hashed password with bcrypt
 
-2. **`backend/strapi/config/server.js`** (or `config/env/production/server.js`)
-   - **Current:** May have localhost settings
-   - **Needed:** Production URL and settings
-   - **Action:** Update for Heroku deployment
-
-3. **`.env` or `.env.production`** (Heroku config vars)
-   - **Current:** Missing DATABASE_URL and Strapi secrets
-   - **Needed:** PostgreSQL connection string, JWT secrets
-   - **Action:** Set Heroku environment variables
-
-4. **`Procfile`** (Heroku deployment)
-   - **Current:** May only run Express server
-   - **Needed:** Ensure Strapi starts properly
-   - **Action:** Verify/update Procfile
-
-5. **`package.json`**
-   - **Current:** Has all dependencies
-   - **Needed:** Verify PostgreSQL driver (`pg`) is included
-   - **Action:** Check dependencies
-
----
-
-## 🎯 MIGRATION PLAN (Step-by-Step)
-
-### **PHASE 0: Heroku Account Setup** (NEW - Do This First!)
-```
-Timeline: 30 minutes
-Prerequisites: None - START HERE
-
-Tasks:
-[ ] Create Heroku account (if you don't have one)
-    URL: https://signup.heroku.com/
-    Use your email address
-    
-[ ] Verify email address
-    Check inbox for verification email
-    
-[ ] Install Heroku CLI
-    macOS: brew tap heroku/brew && brew install heroku
-    Windows: Download from https://devcenter.heroku.com/articles/heroku-cli
-    Linux: curl https://cli-assets.heroku.com/install.sh | sh
-    
-[ ] Verify Heroku CLI installation
-    Command: heroku --version
-    Expected: heroku/8.x.x or higher
-    
-[ ] Login to Heroku via CLI
-    Command: heroku login
-    Follow browser authentication flow
-    
-[ ] Verify login successful
-    Command: heroku auth:whoami
-    Should show your email
-    
-[ ] Check existing apps (should be empty or show your apps)
-    Command: heroku apps --all
-
-Deliverable: Heroku account ready, CLI installed and authenticated
+DEVADMIN_USERNAME=devadmin
+DEVADMIN_PASSWORD_HASH=$2b$10$... (bcrypt hash)
+JWT_SECRET=<strong_random_secret>
+JWT_EXPIRY=24h
 ```
 
-### **PHASE 1: Create New Heroku App** (UPDATED)
-```
-Timeline: 15 minutes
-Prerequisites: Phase 0 complete
+#### **Frontend Environment Variables (Vercel):**
+```bash
+# Frontend does NOT store password
+# Only backend validates credentials
 
-Tasks:
-[ ] Create new Heroku app on YOUR account
-    Command: heroku create liff-ot-app-arun
-    Note: If name taken, try: liff-ot-app-arun-prod or liff-ot-app-[your-name]
-    
-[ ] Verify app was created
-    Command: heroku apps:info --app liff-ot-app-arun
-    Note: Save your app name and URL
-    
-[ ] Check app URL
-    Your new backend URL will be: https://[your-app-name].herokuapp.com
-    Example: https://liff-ot-app-arun.herokuapp.com
-    
-[ ] Add git remote for deployment
-    Command: heroku git:remote --app liff-ot-app-arun
-    This allows: git push heroku main
-    
-[ ] Verify git remote added
-    Command: git remote -v
-    Should see: heroku  https://git.heroku.com/liff-ot-app-arun.git
-
-Deliverable: New Heroku app created on YOUR account, ready for deployment
+VITE_API_URL=https://liff-ot-app-arun.herokuapp.com
+VITE_DEVADMIN_ENABLED=true
 ```
 
-### **PHASE 2: Add PostgreSQL Database** (UPDATED - This is "Attaching the Database!")
+### **Authentication Flow**
+
 ```
-Timeline: 30 minutes
-Prerequisites: Phase 1 complete (Heroku app created)
-
-IMPORTANT: This is what "attach the Strapi database" means!
-You're creating a PostgreSQL database and connecting it to your Heroku app.
-
-Tasks:
-[ ] Add PostgreSQL add-on to your Heroku app
-    
-    Option A (Recommended for production):
-    Command: heroku addons:create heroku-postgresql:essential-0 --app liff-ot-app-arun
-    Cost: $5/month (10M rows, 20 connections, 1GB RAM)
-    
-    Option B (For testing first):
-    Command: heroku addons:create heroku-postgresql:mini --app liff-ot-app-arun
-    Cost: Free tier (10k rows, 20 connections)
-    
-    Choose based on budget and needs!
-    
-[ ] Wait for PostgreSQL provisioning (2-3 minutes)
-    Command: heroku addons:info postgresql --app liff-ot-app-arun
-    Wait until status shows "available"
-    
-[ ] Verify DATABASE_URL was automatically set
-    Command: heroku config:get DATABASE_URL --app liff-ot-app-arun
-    Should see: postgres://username:password@host:5432/database
-    This is your database connection string!
-    
-[ ] Test database connection
-    Command: heroku pg:psql --app liff-ot-app-arun
-    You should connect to PostgreSQL
-    Type: \l (to list databases)
-    Type: \q (to quit)
-    
-[ ] Check database info
-    Command: heroku pg:info --app liff-ot-app-arun
-    Note: Plan, Status, Connections, Size
-    
-[ ] Check database is empty (no tables yet - Strapi will create them)
-    Command: heroku pg:psql --app liff-ot-app-arun
-    Type: \dt
-    Should see: "Did not find any relations" (normal at this stage)
-    Type: \q
-
-Deliverable: PostgreSQL database created and "attached" to your Heroku app
-Note: "Attached" means DATABASE_URL environment variable is automatically set
+1. User enters devadmin credentials
+   ↓
+2. Frontend sends POST /auth/devadmin
+   {
+     username: "devadmin",
+     password: "plain_text_password"
+   }
+   ↓
+3. Backend validates:
+   - Compare username with process.env.DEVADMIN_USERNAME
+   - Compare password hash with process.env.DEVADMIN_PASSWORD_HASH
+   ↓
+4. If valid:
+   - Generate JWT with payload: { username, role: 'devadmin' }
+   - Set httpOnly cookie
+   - Return JWT to frontend
+   ↓
+5. Frontend stores JWT in:
+   - localStorage (for persistence)
+   - Cookie (for httpOnly security)
+   ↓
+6. All subsequent requests include JWT in:
+   - Authorization header: Bearer <token>
+   - Cookie (automatic)
+   ↓
+7. Backend middleware verifies:
+   - JWT signature valid
+   - JWT not expired
+   - JWT payload contains role: 'devadmin'
+   ↓
+8. Grant/deny access to dev tools
 ```
 
-### **PHASE 1: Pre-Work** (Waiting for Access) - DEPRECATED
-```
-Status: NO LONGER NEEDED - You're creating your own Heroku app!
-This phase is replaced by Phase 0 (Heroku Account Setup)
+### **Token Security**
 
-Old tasks (ignore these):
-[ ] ~~PM adds developer as Heroku collaborator~~
-[ ] ~~PM adds developer as Vercel collaborator~~
-```
-
-### **PHASE 2: Database Setup** (Friday-Saturday) - NOW PHASE 3
-```
-Status: UPDATED - See Phase 2 above for complete database setup
-```
-
-### **PHASE 3: Strapi Configuration** (Friday-Saturday) - NOW PHASE 4
-```
-Timeline: 2-3 hours
-Prerequisites: Phase 2 complete (PostgreSQL database created)
-
-IMPORTANT: This configures Strapi to USE the PostgreSQL database you just attached!
-
-Tasks:
-[ ] Create production database configuration directory
-    Command: mkdir -p backend/strapi/config/env/production
-    
-[ ] Create production database config file
-    File: backend/strapi/config/env/production/database.js
-    
-    Content:
-    ```javascript
-    module.exports = ({ env }) => ({
-      connection: {
-        client: 'postgres',
-        connection: {
-          // Heroku automatically provides DATABASE_URL
-          connectionString: env('DATABASE_URL'),
-          ssl: {
-            rejectUnauthorized: false, // Required for Heroku PostgreSQL
-          },
-        },
-        pool: {
-          min: env.int('DATABASE_POOL_MIN', 2),
-          max: env.int('DATABASE_POOL_MAX', 10),
-        },
-        acquireConnectionTimeout: env.int('DATABASE_CONNECTION_TIMEOUT', 60000),
-      },
-    });
-    ```
-    
-    What this does:
-    - Tells Strapi to use PostgreSQL (not SQLite)
-    - Gets connection from DATABASE_URL (set by Heroku)
-    - Enables SSL (required by Heroku)
-    - Sets connection pool (for performance)
-    
-[ ] Create production server config file
-    File: backend/strapi/config/env/production/server.js
-    
-    Content:
-    ```javascript
-    module.exports = ({ env }) => ({
-      host: env('HOST', '0.0.0.0'),
-      port: env.int('PORT', 1337),
-      url: env('STRAPI_URL', 'https://liff-ot-app-arun.herokuapp.com'), // YOUR URL
-      app: {
-        keys: env.array('APP_KEYS'),
-      },
-      webhooks: {
-        populateRelations: env.bool('WEBHOOKS_POPULATE_RELATIONS', false),
-      },
-    });
-    ```
-    
-    Replace 'liff-ot-app-arun.herokuapp.com' with YOUR Heroku app URL!
-    
-[ ] Verify PostgreSQL client is in dependencies
-    Command: grep '"pg"' package.json
-    Should see: "pg": "^8.x.x" or similar
-    If missing, add it:
-    Command: npm install pg --save
-    
-[ ] Generate Strapi secrets (run this command 4 times, save each output)
-    Command: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-    
-    Save outputs as:
-    - Secret 1: ADMIN_JWT_SECRET
-    - Secret 2: API_TOKEN_SALT
-    - Secret 3: JWT_SECRET
-    - Secrets 4-7: APP_KEYS (comma-separated)
-    
-[ ] Set Heroku environment variables with your secrets
-    Commands:
-    heroku config:set NODE_ENV=production --app liff-ot-app-arun
-    heroku config:set ADMIN_JWT_SECRET="<paste-secret-1>" --app liff-ot-app-arun
-    heroku config:set API_TOKEN_SALT="<paste-secret-2>" --app liff-ot-app-arun
-    heroku config:set JWT_SECRET="<paste-secret-3>" --app liff-ot-app-arun
-    heroku config:set APP_KEYS="secret4,secret5,secret6,secret7" --app liff-ot-app-arun
-    heroku config:set STRAPI_URL=https://liff-ot-app-arun.herokuapp.com --app liff-ot-app-arun
-    heroku config:set DATABASE_SSL_SELF=false --app liff-ot-app-arun
-    
-[ ] Copy existing environment variables from .env.local
-    Get these values from your .env.local file:
-    
-    heroku config:set LINE_CHANNEL_ACCESS_TOKEN="<from-env-local>" --app liff-ot-app-arun
-    heroku config:set LINE_GROUP_ID_DEV="<from-env-local>" --app liff-ot-app-arun
-    heroku config:set LINE_GROUP_ID_PROD="<from-env-local>" --app liff-ot-app-arun
-    heroku config:set MANAGER_USER_IDS_DEV="<from-env-local>" --app liff-ot-app-arun
-    heroku config:set MANAGER_USER_IDS_PROD="<from-env-local>" --app liff-ot-app-arun
-    heroku config:set VITE_GOOGLE_SHEET_ID_DEV="<from-env-local>" --app liff-ot-app-arun
-    heroku config:set VITE_GOOGLE_SHEET_ID_PROD="<from-env-local>" --app liff-ot-app-arun
-    heroku config:set VITE_LIFF_ID="<from-env-local>" --app liff-ot-app-arun
-    
-[ ] Set Google Service Account credentials
-    Option A (Base64 encoded - recommended):
-    Command: cat google-credentials.json | base64 | tr -d '\n' | pbcopy
-    Then: heroku config:set GOOGLE_SERVICE_ACCOUNT_KEY="<paste-from-clipboard>" --app liff-ot-app-arun
-    
-    Option B (File path - not recommended for Heroku):
-    You'll need to include the file in your git repo (not secure!)
-    
-[ ] Verify all environment variables are set
-    Command: heroku config --app liff-ot-app-arun
-    Should see: DATABASE_URL, ADMIN_JWT_SECRET, API_TOKEN_SALT, etc.
-    
-[ ] Commit configuration changes to git
-    Commands:
-    git add backend/strapi/config/env/production/
-    git add package.json (if you added 'pg' dependency)
-    git commit -m "Configure Strapi for production PostgreSQL on new Heroku app"
-
-Deliverable: Strapi configured to use PostgreSQL, all secrets set
-```
-
-### **PHASE 4: Deployment** (Saturday-Sunday) - NOW PHASE 5
-```
-Timeline: 2-3 hours
-Prerequisites: Configuration complete
-
-Tasks:
-[ ] Deploy to Heroku
-    Command: git push heroku main
-    
-[ ] Monitor deployment logs
-    Command: heroku logs --tail --app liff-ot-app-positive
-    
-[ ] Run database migrations
-    Command: heroku run npm run strapi -- migrations:run --app liff-ot-app-positive
-    
-[ ] Build Strapi admin
-    Command: heroku run npm run strapi -- build --app liff-ot-app-positive
-    
-[ ] Verify Strapi admin access
-    URL: https://liff-ot-app-positive.herokuapp.com/admin
-    
-[ ] Create first admin user
-    Via UI or CLI: heroku run npm run strapi -- admin:create-user
-```
-
-### **PHASE 5: Deployment to YOUR Heroku** (Saturday-Sunday)
-```
-Timeline: 2-3 hours
-Prerequisites: Phase 4 complete (Strapi configured)
-
-IMPORTANT: You're now deploying to YOUR new Heroku app, not the old one!
-
-Tasks:
-[ ] Ensure you're in project root directory
-    Command: cd /path/to/liff-ot-app-arun
-    Command: pwd (verify you're in correct directory)
-    
-[ ] Check git status (should be clean or only have config changes)
-    Command: git status
-    
-[ ] Verify Heroku git remote is set to YOUR app
-    Command: git remote -v
-    Should see: heroku  https://git.heroku.com/liff-ot-app-arun.git (fetch)
-    Should see: heroku  https://git.heroku.com/liff-ot-app-arun.git (push)
-    
-[ ] Check Procfile exists and is correct
-    File: Procfile (in project root)
-    
-    Should contain:
-    ```
-    web: node server.mjs
-    ```
-    
-    Or if Strapi is separate process:
-    ```
-    web: node server.mjs
-    release: cd backend/strapi && npm run strapi build
-    ```
-    
-    If Procfile doesn't exist, create it!
-    
-[ ] Deploy to YOUR Heroku app
-    Command: git push heroku main
-    
-    Or if you're on different branch:
-    Command: git push heroku your-branch-name:main
-    
-    Watch the build output - should see:
-    - Building dependencies
-    - Installing node modules
-    - Running build scripts
-    - Launching app
-    
-[ ] Monitor deployment logs in real-time
-    Command: heroku logs --tail --app liff-ot-app-arun
-    
-    Look for:
-    ✅ "Server running on port..."
-    ✅ "Strapi started"
-    ✅ Database connection successful
-    ❌ Any errors (stop and debug if you see errors)
-    
-[ ] Check dyno status (should be "up")
-    Command: heroku ps --app liff-ot-app-arun
-    Should see: web.1: up
-    
-[ ] Test backend health endpoint
-    Command: curl https://liff-ot-app-arun.herokuapp.com/health
-    Expected: {"status":"healthy","timestamp":"...","env":"production"}
-    
-[ ] Test Strapi API endpoint
-    Command: curl https://liff-ot-app-arun.herokuapp.com/api
-    Expected: {"data":{...}} or similar JSON response
-    
-[ ] Check if Strapi created database tables
-    Command: heroku pg:psql --app liff-ot-app-arun
-    SQL: \dt
-    Should now see tables: admin_users, admin_permissions, drivers, attendances, etc.
-    SQL: \q (to exit)
-    
-    If no tables yet, Strapi will create them on first admin access
-    
-[ ] Access Strapi admin panel
-    URL: https://liff-ot-app-arun.herokuapp.com/admin
-    
-    First time: You'll see "Create your admin account" page
-    Fill in:
-    - First name: Admin
-    - Last name: Arun
-    - Email: your-email@example.com (use your email or PM's email)
-    - Password: [Strong password - save it securely!]
-    
-    Click "Let's start"
-    
-[ ] Verify Strapi admin login works
-    Login with credentials you just created
-    Should see Strapi dashboard
-    
-[ ] Check database tables were created by Strapi
-    Command: heroku pg:psql --app liff-ot-app-arun
-    SQL: SELECT COUNT(*) FROM admin_users;
-    Should see: 1 (the admin user you just created)
-    SQL: \q
-    
-[ ] Save admin credentials securely
-    Create file: PRODUCTION_CREDENTIALS.txt (DO NOT COMMIT TO GIT!)
-    Content:
-    ```
-    Strapi Admin Credentials (CONFIDENTIAL)
-    =========================================
-    URL: https://liff-ot-app-arun.herokuapp.com/admin
-    Email: your-email@example.com
-    Password: [your-password]
-    Created: [date]
-    
-    Share with PM only via secure channel!
-    ```
-
-Deliverable: Backend deployed to YOUR Heroku, Strapi admin accessible, database working
-```
-
-### **PHASE 6: Update Frontend to Use NEW Backend** (Sunday)
-```
-Timeline: 1 hour
-Prerequisites: Phase 5 complete (backend deployed and working)
-
-IMPORTANT: Frontend must point to YOUR new Heroku app, not the old one!
-
-Tasks:
-[ ] Login to Vercel
-    URL: https://vercel.com
-    Login with your account (or get access from PM)
-    
-[ ] Navigate to your project
-    Project: liff-ot-app-arun
-    Go to: Settings → Environment Variables
-    
-[ ] Update STRAPI_URL environment variable
-    Variable: STRAPI_URL
-    Old value: https://liff-ot-app-positive.herokuapp.com
-    New value: https://liff-ot-app-arun.herokuapp.com (YOUR app!)
-    
-    Update for all environments:
-    - Production
-    - Preview
-    - Development
-    
-[ ] Update VITE_STRAPI_URL (if it exists)
-    Variable: VITE_STRAPI_URL
-    New value: https://liff-ot-app-arun.herokuapp.com
-    
-[ ] OR update via Vercel CLI
-    Commands:
-    vercel env rm STRAPI_URL production
-    vercel env add STRAPI_URL production
-    # Enter: https://liff-ot-app-arun.herokuapp.com
-    
-    vercel env rm VITE_STRAPI_URL production
-    vercel env add VITE_STRAPI_URL production
-    # Enter: https://liff-ot-app-arun.herokuapp.com
-    
-[ ] Update .env.local for local development
-    File: .env.local
-    
-    Change:
-    STRAPI_URL=http://localhost:1337  # Keep for local dev
-    # OR for testing against production:
-    STRAPI_URL=https://liff-ot-app-arun.herokuapp.com
-    
-[ ] Update backend CORS to allow YOUR frontend
-    File: server.mjs
-    
-    Find: const allowedOrigins = [...]
-    
-    Ensure it includes:
-    ```javascript
-    const allowedOrigins = [
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:5175',
-      'https://liff-ot-app-arun.vercel.app',
-      'https://liff-ot-app-arun-git-main-your-team.vercel.app',
-      /^https:\/\/liff-ot-app-arun-.*\.vercel\.app$/,  // Preview deployments
-    ];
-    ```
-    
-    REMOVE old references:
-    - https://liff-ot-app-positive.herokuapp.com (old Heroku)
-    - https://liff-ot-app-positive.vercel.app (if exists)
-    
-[ ] Commit CORS changes
-    Commands:
-    git add server.mjs
-    git commit -m "Update CORS for new Heroku backend URL"
-    git push heroku main
-    
-[ ] Redeploy frontend on Vercel
-    Option A - Via Vercel Dashboard:
-    - Go to project → Deployments
-    - Click "..." on latest deployment → Redeploy
-    
-    Option B - Via Vercel CLI:
-    Command: vercel --prod
-    
-    Option C - Via Git:
-    Make a small change (add comment) and push to main branch
-    Vercel will auto-deploy
-    
-[ ] Wait for Vercel deployment to complete
-    Watch deployment logs in Vercel dashboard
-    Should see: "Deployment completed"
-    
-[ ] Verify frontend environment variables are correct
-    Vercel Dashboard → Project → Settings → Environment Variables
-    Confirm STRAPI_URL points to YOUR Heroku app
-
-Deliverable: Frontend now points to YOUR new Heroku backend
-```
-
-### **PHASE 7: Integration Testing** (Sunday)
-```
-Timeline: 1-2 hours
-Prerequisites: Strapi deployed successfully
-
-Tasks:
-[ ] Export existing driver data (if any)
-    Command: curl https://liff-ot-app-positive.herokuapp.com/api/drivers > drivers-backup.json
-    
-[ ] Import/create Arun team drivers
-    Methods:
-    - Via Strapi admin UI (Content Manager → Driver)
-    - Via API (bulk import script)
-    - Via CLI (Strapi console)
-    
-[ ] Verify data in database
-    Command: heroku pg:psql --app liff-ot-app-positive
-    SQL: SELECT * FROM drivers;
-    
-[ ] Test data via API
-    Command: curl https://liff-ot-app-positive.herokuapp.com/api/drivers
-```
-
-### **PHASE 7: Integration Testing** (Sunday)
-```
-Timeline: 2-3 hours
-Prerequisites: Phase 6 complete (frontend updated)
-
-CRITICAL: Test everything thoroughly before Arun team uses on Monday!
-
-Tests:
-[ ] Test 1: Backend Health Check
-    Command: curl https://liff-ot-app-arun.herokuapp.com/health
-    Expected: {"status":"healthy",...}
-    
-[ ] Test 2: Strapi API Responds
-    Command: curl https://liff-ot-app-arun.herokuapp.com/api
-    Expected: JSON response (not 404 or error)
-    
-[ ] Test 3: Strapi Admin Accessible
-    URL: https://liff-ot-app-arun.herokuapp.com/admin
-    Action: Login with admin credentials
-    Expected: Dashboard loads successfully
-    
-[ ] Test 4: Database Has Tables
-    Command: heroku pg:psql --app liff-ot-app-arun
-    SQL: \dt
-    Expected: See tables (drivers, attendances, admin_users, etc.)
-    SQL: \q
-    
-[ ] Test 5: Frontend Loads
-    URL: https://liff-ot-app-arun.vercel.app
-    Expected: App loads without console errors
-    
-[ ] Test 6: Driver Dropdown (Frontend → Strapi Integration)
-    Action: Open frontend, look at driver dropdown
-    Expected: Dropdown should be empty (no drivers yet)
-    Note: We'll add drivers in Phase 8
-    
-[ ] Test 7: Create Test Driver via Strapi Admin
-    Strapi Admin → Content Manager → Driver → Create new entry
-    Fill in:
-    - Name: "Test Driver"
-    - Age: 30
-    - Status: active
-    Click: Save & Publish
-    
-[ ] Test 8: Verify Driver in Database
-    Command: heroku pg:psql --app liff-ot-app-arun
-    SQL: SELECT * FROM drivers;
-    Expected: See "Test Driver" record
-    SQL: \q
-    
-[ ] Test 9: Frontend Shows Driver
-    Refresh frontend page
-    Check dropdown
-    Expected: "Test Driver" appears in dropdown
-    
-[ ] Test 10: Clock-In Flow (Full Integration Test)
-    Action:
-    1. Select "Test Driver" from dropdown
-    2. Click "Clock In" button
-    3. Wait for success message
-    
-    Expected:
-    - Success message appears
-    - Clock-in time shows in form
-    - Check Google Sheets: Entry created
-    - Check Strapi Admin → Attendance: Entry created (optional)
-    
-[ ] Test 11: Clock-Out Flow with OT Calculation
-    Action:
-    1. Same driver still selected
-    2. Change time to 18:00 (or use current time if after 17:00)
-    3. Click "Clock Out" button
-    4. Wait for success message
-    
-    Expected:
-    - Success message appears
-    - OT hours calculated and shown
-    - Google Sheets updated with clock-out time and OT
-    - LINE notification sent to manager group
-    
-[ ] Test 12: Verify OT Calculation
-    Check Google Sheets:
-    - Clock In: [time]
-    - Clock Out: [time]
-    - OT Start: 17:00 (if clock out after 17:00)
-    - OT End: [clock out time]
-    - OT Hours: [calculated decimal]
-    
-    Manual calculation:
-    If clock out at 18:00: OT = 1.00 hour
-    If clock out at 19:30: OT = 2.50 hours
-    
-[ ] Test 13: LINE Notification Received
-    Check LINE group (manager group)
-    Expected: Notification with driver name, times, OT hours
-    
-[ ] Test 14: Multi-Language Switch
-    Action: Click language toggle (Thai/English)
-    Expected: UI text changes language
-    
-[ ] Test 15: Dark Mode
-    Action: Change system dark mode
-    Expected: App adapts to dark theme
-    
-[ ] Test 16: Manager View
-    URL: https://liff-ot-app-arun.vercel.app/manager
-    Expected: 
-    - Shows "Test Driver"
-    - Shows last clock-in time
-    - Can edit driver
-    - Can delete driver (don't actually delete yet!)
-    
-[ ] Test 17: Comments Auto-Save
-    Action:
-    1. Select driver
-    2. Type in comments field
-    3. Wait 2 seconds
-    
-    Expected:
-    - Comments saved to Google Sheets automatically
-    - No need to click save button
-    
-[ ] Test 18: Data Persistence
-    Action:
-    1. Close browser
-    2. Open frontend again
-    3. Select same driver
-    
-    Expected:
-    - Today's clock-in data auto-loads
-    - Shows existing clock-in time
-    - Shows existing comments
-    
-[ ] Test 19: Error Handling
-    Action: Try to clock in without selecting driver
-    Expected: Error message shown, action blocked
-    
-[ ] Test 20: Month-End OT Blackout (if date is 25-31)
-    Action:
-    1. Clock in early (e.g., 07:00)
-    2. Clock out late (e.g., 19:00)
-    
-    Expected:
-    - If date is 1-24: OT calculated normally
-    - If date is 25-31: OT = 0.00 (blackout period)
-    
-[ ] Test 21: Check Heroku Logs for Errors
-    Command: heroku logs --tail --app liff-ot-app-arun
-    Look for: Any errors or warnings
-    Expected: No critical errors
-    
-[ ] Test 22: Database Connection Pool
-    Command: heroku pg:info --app liff-ot-app-arun
-    Check: Connection count should be low (< 5)
-    
-[ ] Test 23: API Response Times
-    Command: curl -w "Time: %{time_total}s\n" https://liff-ot-app-arun.herokuapp.com/api/drivers
-    Expected: Response time < 2 seconds
-
-Deliverable: All tests passing, system ready for production use
-```
-
-### **PHASE 8: Data Migration & Seeding** (Sunday)
-```
-Timeline: 2-3 hours
-Prerequisites: Data migrated
-
-Tests:
-[ ] Frontend can load drivers from Strapi
-    URL: https://liff-ot-app-arun.vercel.app
-    Action: Open driver dropdown, verify drivers appear
-    
-[ ] Attendance submission saves to both Sheets + Strapi
-    Action: Clock in/out, verify in both systems
-    
-[ ] OT calculation works correctly
-    Test: Clock in 07:00, Clock out 19:00
-    Expected: 3.00 hours OT
-    
-[ ] LINE notifications send successfully
-    Test: Clock out, verify notification in LINE group
-    
-[ ] Manager view shows drivers with last clock-in
-    URL: https://liff-ot-app-arun.vercel.app/manager
-    
-[ ] Multi-language works (Thai/English)
-    Test: Switch language, verify translations
-    
-[ ] Dark mode works
-    Test: System dark mode, verify UI adapts
-```
-
-### **PHASE 9: Documentation & Handoff** (Sunday Evening/Monday Morning)
-```
-Timeline: 2 hours
-Prerequisites: Phase 8 complete (drivers imported)
-
-Deliverables:
-[ ] Production guide for Arun team
-    File: docs/PRODUCTION_GUIDE_ARUN.md
-    
-[ ] Admin credentials document (secure)
-    Info: Strapi admin email + password
-    
-[ ] Troubleshooting guide
-    File: docs/TROUBLESHOOTING.md
-    
-[ ] Handoff checklist completed
-    File: docs/HANDOFF_CHECKLIST.md
-    
-[ ] Demo to PM
-    Schedule: Monday morning
-    
-[ ] Training for Arun team (if needed)
-    Schedule: Monday
-```
-
----
-
-## 🚨 CRITICAL ISSUES & RISKS
-
-### Issue 1: Dual Backend Problem
-**Problem:** System uses BOTH Google Sheets AND Strapi as data stores
-- Google Sheets = Primary (managers view here)
-- Strapi = Secondary (optional, sync may fail silently)
-- No guaranteed consistency between systems
-
-**Current Behavior:**
 ```javascript
-// In server.mjs - submit endpoint
-await updateGoogleSheets(data);  // Always happens
-await saveToStrapi(data);         // Best effort (may fail silently)
+// backend/utils/jwtUtils.js
+
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
+
+export function generateDevAdminToken(username) {
+  return jwt.sign(
+    {
+      username,
+      role: 'devadmin',
+      iat: Math.floor(Date.now() / 1000)
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRY }
+  );
+}
+
+export function verifyDevAdminToken(token) {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return decoded.role === 'devadmin' ? decoded : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function validateDevAdminCredentials(username, password) {
+  const envUsername = process.env.DEVADMIN_USERNAME;
+  const envPasswordHash = process.env.DEVADMIN_PASSWORD_HASH;
+  
+  if (username !== envUsername) {
+    return false;
+  }
+  
+  return await bcrypt.compare(password, envPasswordHash);
+}
 ```
-
-**Risk:** Data in Sheets ≠ Data in Strapi
-
-**Mitigation (For Now):**
-- Prioritize Google Sheets as source of truth
-- Treat Strapi as supplementary
-- Add error logging for Strapi failures
-- Future: Decide on single source of truth
-
-### Issue 2: No Automated Tests
-**Problem:** Zero unit tests, integration tests, or E2E tests
-- Every deployment is manual verification
-- High risk of breaking changes
-- No regression protection
-
-**Risk:** Production bugs not caught until users report
-
-**Mitigation:**
-- Manual testing checklist (see Phase 6)
-- Monitor Heroku logs closely
-- Have rollback plan ready
-
-### Issue 3: Large Component Files
-**Problem:** 
-- `StyledForm.jsx` = 800+ lines
-- `ManagerView.jsx` = 600+ lines
-- Business logic mixed with UI
-
-**Risk:** Hard to modify, test, debug
-
-**Mitigation (For Now):**
-- Don't refactor before deadline
-- Add comments to complex sections
-- Plan refactoring for after launch
-
-### Issue 4: Silent Failures
-**Problem:** Many API calls use `.catch()` with only `console.error()`
-- No user notification
-- No retry logic
-- No alerting to operations team
-
-**Risk:** Users think operation succeeded when it failed
-
-**Mitigation:**
-- Add user-facing error messages
-- Log errors with context
-- Monitor Heroku logs
-
-### Issue 5: Time Zone Complexity
-**Problem:** Thai Buddhist calendar + Bangkok timezone
-- Easy to make mistakes
-- Date conversion logic scattered
-
-**Risk:** OT calculated for wrong date
-
-**Mitigation:**
-- Centralize date/time logic
-- Test extensively with Thai dates
-- Document conversion rules
 
 ---
 
-## 🔐 SECURITY CONSIDERATIONS
+## 📋 IMPLEMENTATION CHECKLIST
 
-### Secrets Management
-**Current State:**
-- Secrets in `.env.local` (local dev)
-- Secrets in Heroku config vars (production)
+### **Phase 1: DevAdmin Authentication** ✅ **COMPLETED - Nov 18, 2025**
 
-**For Production:**
-```bash
-# Generate strong secrets (32 bytes, base64)
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+#### Backend Tasks:
+- [x] Install dependencies: `bcrypt`, `jsonwebtoken` (bcrypt already installed, added jsonwebtoken)
+- [x] Create `utils/devAdminAuth.js` (credential validation with bcrypt)
+- [x] Create `utils/jwtUtils.js` (JWT token handling with httpOnly cookies)
+- [x] ~~Create `backend/middleware/devAdminMiddleware.js`~~ (Not needed - verification integrated into endpoints)
+- [x] Add endpoint `POST /auth/devadmin` in `server.mjs`
+- [x] Add endpoint `GET /auth/verify-devadmin` in `server.mjs`
+- [x] Add endpoint `POST /auth/logout-devadmin` in `server.mjs`
+- [x] Generate bcrypt hash for devadmin password
+- [x] Set Heroku environment variables:
+  - [x] `DEVADMIN_USERNAME`
+  - [x] `DEVADMIN_PASSWORD_HASH`
+  - [x] `JWT_SECRET`
+  - [x] `JWT_EXPIRY`
+- [x] Test authentication endpoints with CURL (All tests passed on production)
+- [x] Deploy to Heroku (v75)
+- [x] Document implementation (DEVADMIN_IMPLEMENTATION.md)
 
-# Required secrets:
-- ADMIN_JWT_SECRET
-- API_TOKEN_SALT  
-- JWT_SECRET
-- APP_KEYS (4 secrets, comma-separated)
-- DATABASE_URL (auto-set by Heroku PostgreSQL)
-- LINE_CHANNEL_ACCESS_TOKEN
-- GOOGLE_SERVICE_ACCOUNT_KEY
-```
+#### Frontend Tasks:
+- [ ] Create `src/components/DevAdminLogin.jsx`
+- [ ] Create `src/contexts/DevAdminContext.jsx`
+- [ ] Create `src/hooks/useDevAdmin.js`
+- [ ] Add devadmin login route in router
+- [ ] Style login form (Tailwind)
+- [ ] Implement error handling for failed auth
+- [ ] Add logout functionality
+- [ ] Test login flow in browser
 
-**Never commit to git:**
-- `.env.local`
-- `.env.production`
-- `google-credentials.json`
-- Any file with secrets
+### **Phase 2: Conditional Dev Tools**
 
-### Access Control
-**Strapi Roles:**
-- Super Admin: Full access (1 user only)
-- Admin: Content management (Arun managers)
-- Author/Editor: Limited access
-- Public: Read-only (drivers via API)
+#### Frontend Tasks:
+- [ ] Update `src/components/StyledForm.jsx`:
+  - [ ] Import `useDevAdmin` hook
+  - [ ] Wrap dev tools section with `{isDevAdmin && ...}`
+  - [ ] Test dev tools visibility
+- [ ] Update environment toggle component:
+  - [ ] Import `useDevAdmin` hook
+  - [ ] Conditionally render toggle button
+  - [ ] Test toggle visibility
+- [ ] Create `src/utils/envGuard.js`:
+  - [ ] Export `getEnvironment()` function
+  - [ ] Force `prod` for non-devadmin
+  - [ ] Allow `dev` for devadmin only
+- [ ] Update all API calls:
+  - [ ] Use `getEnvironment()` instead of direct `env` state
+  - [ ] Test environment locking
+- [ ] Hide manual testing forms:
+  - [ ] OT calculation test
+  - [ ] Day of Week updater
+  - [ ] Sheet selector
+  - [ ] All other dev-only features
+- [ ] Test with regular user account (no dev tools visible)
+- [ ] Test with devadmin account (all dev tools visible)
 
-**LINE Integration:**
-- Manager user IDs hardcoded in environment
-- Only specific users can approve via LINE
-- Production vs Dev groups separated
+### **Phase 3: Approval Handler Integration**
+
+#### Backend Tasks:
+- [ ] Review `backend/utils/approvalHandler.js`:
+  - [ ] Document existing code
+  - [ ] Identify integration points
+  - [ ] List required changes
+- [ ] Enhance `approvalHandler.js`:
+  - [ ] Add `parseApprovalCommand()` function
+  - [ ] Add `updateApprovalStatus()` function
+  - [ ] Add Google Sheets status update logic
+  - [ ] Add Strapi attendance update logic
+  - [ ] Add notification sending logic
+- [ ] Update webhook endpoint in `server.mjs`:
+  - [ ] Import `approvalHandler`
+  - [ ] Call handler on LINE message receive
+  - [ ] Handle approval commands
+  - [ ] Handle rejection commands
+  - [ ] Send confirmation to manager
+- [ ] Add new API endpoints:
+  - [ ] `GET /api/attendances/:id/approval-status`
+  - [ ] `POST /api/attendances/:id/approve`
+  - [ ] `POST /api/attendances/:id/reject`
+- [ ] Update Google Sheets structure:
+  - [ ] Add "Approval Status" column
+  - [ ] Add "Approved By" column
+  - [ ] Add "Approved At" column
+- [ ] Test approval flow with CURL:
+  - [ ] Submit attendance → status = "Pending"
+  - [ ] Send approve command → status = "Approved"
+  - [ ] Send reject command → status = "Rejected"
+
+#### Frontend Tasks:
+- [ ] Create `src/constants/approvalConstants.js`:
+  - [ ] Define status constants
+  - [ ] Define status colors
+  - [ ] Define status labels
+- [ ] Create `src/components/ApprovalStatusBadge.jsx`:
+  - [ ] Show colored badge based on status
+  - [ ] Support all status types
+  - [ ] Add tooltips
+- [ ] Update `src/components/StyledForm.jsx`:
+  - [ ] Show approval status after submission
+  - [ ] Display status badge
+  - [ ] Add loading state for status check
+- [ ] Create `src/hooks/useApprovalStatus.js`:
+  - [ ] Poll approval status every 30 seconds
+  - [ ] Return current status
+  - [ ] Handle errors
+- [ ] Test approval status display in UI
+
+### **Phase 4: Manager View Enhancements**
+
+#### Frontend Tasks:
+- [ ] Update `src/components/ManagerView.jsx`:
+  - [ ] Add "Approval Status" column to table
+  - [ ] Add filter dropdown (All/Pending/Approved/Rejected)
+  - [ ] Implement filter logic
+  - [ ] Add bulk approve/reject buttons (devadmin only)
+  - [ ] Style approval status badges
+- [ ] Create `src/components/ApprovalHistory.jsx`:
+  - [ ] Fetch approval history from API
+  - [ ] Display timeline of status changes
+  - [ ] Show who approved/rejected
+  - [ ] Show timestamps
+  - [ ] Style with Tailwind
+- [ ] Test manager view:
+  - [ ] Filter works correctly
+  - [ ] Status displayed accurately
+  - [ ] Bulk actions work (devadmin only)
+
+### **Phase 5: Testing & Deployment**
+
+#### Testing Tasks:
+- [ ] **Unit Tests** (if implementing):
+  - [ ] `devAdminAuth.js` functions
+  - [ ] `jwtUtils.js` functions
+  - [ ] `approvalHandler.js` functions
+  - [ ] Frontend utility functions
+- [ ] **Integration Tests**:
+  - [ ] DevAdmin login flow
+  - [ ] Token validation
+  - [ ] Approval command processing
+  - [ ] Google Sheets updates
+  - [ ] Strapi updates
+- [ ] **E2E Tests**:
+  - [ ] Regular user cannot access dev tools
+  - [ ] DevAdmin can access dev tools
+  - [ ] Approval flow works end-to-end
+  - [ ] Status updates reflect in UI
+- [ ] **Security Tests**:
+  - [ ] Invalid credentials rejected
+  - [ ] Expired tokens rejected
+  - [ ] Direct API access blocked without token
+  - [ ] XSS/CSRF protection
+- [ ] **Performance Tests**:
+  - [ ] Auth endpoint response time
+  - [ ] Approval processing time
+  - [ ] UI rendering performance
+
+#### Deployment Tasks:
+- [ ] **Heroku (Backend)**:
+  - [ ] Set environment variables
+  - [ ] Deploy updated backend
+  - [ ] Monitor logs for errors
+  - [ ] Test all endpoints
+- [ ] **Vercel (Frontend)**:
+  - [ ] Set environment variables
+  - [ ] Deploy updated frontend
+  - [ ] Test in production
+  - [ ] Verify dev tools hidden for regular users
+- [ ] **Documentation**:
+  - [ ] Update AGENTS.md with findings
+  - [ ] Document devadmin credentials location
+  - [ ] Document approval command syntax
+  - [ ] Create troubleshooting guide
+  - [ ] Update user guides
 
 ---
 
-## 📊 SUCCESS CRITERIA
+## 🔧 CODE EXAMPLES
 
-### Technical Success ✅
-- [ ] Strapi accessible at https://liff-ot-app-positive.herokuapp.com/admin
-- [ ] PostgreSQL database connected (verify with `heroku pg:info`)
-- [ ] All API endpoints return 200 OK
-- [ ] No errors in Heroku logs (critical errors only)
-- [ ] Database has tables: drivers, attendances, users
+### **Backend: DevAdmin Authentication Endpoint**
 
-### Functional Success ✅
-- [ ] Driver dropdown loads from Strapi
-- [ ] Clock in/out saves to both Sheets + Strapi
-- [ ] OT calculation correct (test multiple scenarios)
-- [ ] LINE notifications send successfully
-- [ ] Manager view shows drivers with last clock-in
-- [ ] Language switching works (Thai/English)
+```javascript
+// backend/server.mjs
 
-### Business Success ✅
-- [ ] Arun team can log in to Strapi admin
-- [ ] All drivers imported and visible
-- [ ] Documentation provided and clear
-- [ ] PM approves handoff
-- [ ] System ready for Monday production use
+import { validateDevAdminCredentials, generateDevAdminToken } from './utils/devAdminAuth.js';
+
+// DevAdmin Authentication
+app.post('/auth/devadmin', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username and password required'
+      });
+    }
+    
+    const isValid = await validateDevAdminCredentials(username, password);
+    
+    if (!isValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+    
+    const token = generateDevAdminToken(username);
+    
+    // Set httpOnly cookie for security
+    res.cookie('devadmin_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      sameSite: 'strict'
+    });
+    
+    res.json({
+      success: true,
+      token,
+      user: {
+        username,
+        role: 'devadmin'
+      }
+    });
+  } catch (error) {
+    console.error('DevAdmin auth error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Authentication failed'
+    });
+  }
+});
+
+// Verify DevAdmin Token
+app.get('/auth/verify-devadmin', (req, res) => {
+  try {
+    const token = req.cookies.devadmin_token || req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided'
+      });
+    }
+    
+    const decoded = verifyDevAdminToken(token);
+    
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        username: decoded.username,
+        role: decoded.role
+      }
+    });
+  } catch (error) {
+    console.error('Token verification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Verification failed'
+    });
+  }
+});
+```
+
+### **Frontend: useDevAdmin Hook**
+
+```javascript
+// src/hooks/useDevAdmin.js
+
+import { useState, useEffect } from 'react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+export function useDevAdmin() {
+  const [isDevAdmin, setIsDevAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  
+  useEffect(() => {
+    verifyDevAdmin();
+  }, []);
+  
+  async function verifyDevAdmin() {
+    try {
+      const token = localStorage.getItem('devadmin_token');
+      
+      if (!token) {
+        setIsDevAdmin(false);
+        setLoading(false);
+        return;
+      }
+      
+      const response = await fetch(`${API_URL}/auth/verify-devadmin`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setIsDevAdmin(data.success);
+        setUser(data.user);
+      } else {
+        setIsDevAdmin(false);
+        localStorage.removeItem('devadmin_token');
+      }
+    } catch (error) {
+      console.error('DevAdmin verification failed:', error);
+      setIsDevAdmin(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  async function login(username, password) {
+    try {
+      const response = await fetch(`${API_URL}/auth/devadmin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ username, password })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        localStorage.setItem('devadmin_token', data.token);
+        setIsDevAdmin(true);
+        setUser(data.user);
+        return { success: true };
+      } else {
+        const data = await response.json();
+        return { success: false, message: data.message };
+      }
+    } catch (error) {
+      console.error('DevAdmin login failed:', error);
+      return { success: false, message: 'Login failed' };
+    }
+  }
+  
+  function logout() {
+    localStorage.removeItem('devadmin_token');
+    setIsDevAdmin(false);
+    setUser(null);
+  }
+  
+  return {
+    isDevAdmin,
+    loading,
+    user,
+    login,
+    logout,
+    verifyDevAdmin
+  };
+}
+```
+
+### **Frontend: Environment Guard**
+
+```javascript
+// src/utils/envGuard.js
+
+import { useDevAdmin } from '../hooks/useDevAdmin';
+
+export function getEnvironment(requestedEnv, isDevAdmin) {
+  // If not devadmin, always return 'prod'
+  if (!isDevAdmin) {
+    return 'prod';
+  }
+  
+  // DevAdmin can choose any environment
+  return requestedEnv || 'prod';
+}
+
+export function canAccessDevEnvironment(isDevAdmin) {
+  return isDevAdmin === true;
+}
+
+export function validateEnvironmentAccess(env, isDevAdmin) {
+  if (env === 'dev' && !isDevAdmin) {
+    console.warn('Non-devadmin attempting to access dev environment. Access denied.');
+    return false;
+  }
+  return true;
+}
+```
+
+### **Frontend: Conditional Dev Tools in StyledForm**
+
+```jsx
+// src/components/StyledForm.jsx (excerpt)
+
+import { useDevAdmin } from '../hooks/useDevAdmin';
+import { getEnvironment } from '../utils/envGuard';
+
+export default function StyledForm() {
+  const { isDevAdmin, loading } = useDevAdmin();
+  const [selectedEnv, setSelectedEnv] = useState('prod');
+  
+  // Get actual environment (forced to prod for non-devadmin)
+  const actualEnv = getEnvironment(selectedEnv, isDevAdmin);
+  
+  // ... rest of component logic
+  
+  return (
+    <div className="styled-form">
+      {/* Main form content */}
+      {/* ... */}
+      
+      {/* Dev Tools Section - Only visible to devadmin */}
+      {isDevAdmin && (
+        <div className="dev-tools-section border-t-2 border-purple-500 mt-8 pt-6">
+          <h3 className="text-xl font-bold mb-4 text-purple-600">
+            🛠️ Developer Tools
+          </h3>
+          
+          {/* Environment Toggle */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">
+              Environment
+            </label>
+            <select
+              value={selectedEnv}
+              onChange={(e) => setSelectedEnv(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="dev">Development</option>
+              <option value="prod">Production</option>
+            </select>
+          </div>
+          
+          {/* OT Calculator Test */}
+          <div className="mb-4">
+            <button
+              onClick={testOTCalculation}
+              className="w-full bg-purple-600 text-white py-2 px-4 rounded"
+            >
+              Test OT Calculation
+            </button>
+          </div>
+          
+          {/* Manual Testing Form */}
+          {/* ... */}
+          
+          {/* Day of Week Updater */}
+          {/* ... */}
+          
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### **Backend: Approval Handler Integration**
+
+```javascript
+// backend/utils/approvalHandler.js (enhanced)
+
+import { google } from 'googleapis';
+import { sendLineNotification } from './lineUtils.js';
+import { updateAttendanceApprovalStatus } from './strapiUtils.js';
+
+const APPROVAL_STATUSES = {
+  PENDING: 'Pending',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected'
+};
+
+/**
+ * Parse approval command from LINE message
+ * @param {string} message - LINE message text
+ * @returns {object|null} - Parsed command or null
+ */
+export function parseApprovalCommand(message) {
+  const text = message.trim().toLowerCase();
+  
+  // Pattern: approve <driver_name> <date>
+  const approveMatch = text.match(/^approve\s+(.+?)\s+(\d{2}\/\d{2}\/\d{4})$/);
+  if (approveMatch) {
+    return {
+      action: 'approve',
+      driverName: approveMatch[1].trim(),
+      date: approveMatch[2]
+    };
+  }
+  
+  // Pattern: reject <driver_name> <date>
+  const rejectMatch = text.match(/^reject\s+(.+?)\s+(\d{2}\/\d{2}\/\d{4})$/);
+  if (rejectMatch) {
+    return {
+      action: 'reject',
+      driverName: rejectMatch[1].trim(),
+      date: rejectMatch[2]
+    };
+  }
+  
+  // Pattern: approve all
+  if (text === 'approve all') {
+    return {
+      action: 'approve_all'
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Update approval status in Google Sheets
+ * @param {object} params - Parameters
+ * @param {string} params.driverName - Driver name
+ * @param {string} params.date - Date in Thai format
+ * @param {string} params.status - Approval status
+ * @param {string} params.approvedBy - Manager name
+ * @param {string} params.env - Environment (dev/prod)
+ * @returns {Promise<boolean>} - Success status
+ */
+export async function updateApprovalStatusInSheets({
+  driverName,
+  date,
+  status,
+  approvedBy,
+  env = 'prod'
+}) {
+  try {
+    // Get Google Sheets instance
+    const sheets = await getGoogleSheetsInstance();
+    const spreadsheetId = env === 'dev' 
+      ? process.env.SPREADSHEET_ID_DEV 
+      : process.env.SPREADSHEET_ID_PROD;
+    
+    // Find the row for this driver and date
+    const sheetName = getSheetNameFromDate(date);
+    const range = `${sheetName}!A:Z`;
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range
+    });
+    
+    const rows = response.data.values || [];
+    const headers = rows[0];
+    
+    // Find column indexes
+    const nameColIndex = headers.indexOf('Name');
+    const dateColIndex = headers.indexOf('Date');
+    const statusColIndex = headers.indexOf('Approval Status');
+    const approvedByColIndex = headers.indexOf('Approved By');
+    const approvedAtColIndex = headers.indexOf('Approved At');
+    
+    // Find the row
+    let targetRowIndex = -1;
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][nameColIndex] === driverName && rows[i][dateColIndex] === date) {
+        targetRowIndex = i;
+        break;
+      }
+    }
+    
+    if (targetRowIndex === -1) {
+      console.error('Row not found for approval update');
+      return false;
+    }
+    
+    // Update the row
+    const updates = [
+      {
+        range: `${sheetName}!${getColumnLetter(statusColIndex)}${targetRowIndex + 1}`,
+        values: [[status]]
+      },
+      {
+        range: `${sheetName}!${getColumnLetter(approvedByColIndex)}${targetRowIndex + 1}`,
+        values: [[approvedBy]]
+      },
+      {
+        range: `${sheetName}!${getColumnLetter(approvedAtColIndex)}${targetRowIndex + 1}`,
+        values: [[new Date().toISOString()]]
+      }
+    ];
+    
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        data: updates,
+        valueInputOption: 'USER_ENTERED'
+      }
+    });
+    
+    console.log(`✅ Updated approval status for ${driverName} on ${date} to ${status}`);
+    return true;
+  } catch (error) {
+    console.error('Error updating approval status in sheets:', error);
+    return false;
+  }
+}
+
+/**
+ * Process approval command
+ * @param {object} command - Parsed command
+ * @param {string} managerName - Manager who sent command
+ * @param {string} env - Environment
+ * @returns {Promise<object>} - Result
+ */
+export async function processApprovalCommand(command, managerName, env = 'prod') {
+  try {
+    const { action, driverName, date } = command;
+    
+    if (action === 'approve_all') {
+      // Handle bulk approval
+      return await approveAllPending(managerName, env);
+    }
+    
+    const status = action === 'approve' 
+      ? APPROVAL_STATUSES.APPROVED 
+      : APPROVAL_STATUSES.REJECTED;
+    
+    // Update Google Sheets
+    const sheetsSuccess = await updateApprovalStatusInSheets({
+      driverName,
+      date,
+      status,
+      approvedBy: managerName,
+      env
+    });
+    
+    // Update Strapi (if exists)
+    const strapiSuccess = await updateAttendanceApprovalStatus({
+      driverName,
+      date,
+      status,
+      approvedBy: managerName
+    });
+    
+    // Send confirmation notification
+    const confirmationMessage = `✅ ${driverName}'s attendance on ${date} has been ${status.toLowerCase()} by ${managerName}`;
+    await sendLineNotification(confirmationMessage, env);
+    
+    return {
+      success: sheetsSuccess,
+      message: confirmationMessage
+    };
+  } catch (error) {
+    console.error('Error processing approval command:', error);
+    return {
+      success: false,
+      message: 'Failed to process approval command'
+    };
+  }
+}
+
+// Helper functions
+function getSheetNameFromDate(thaiDate) {
+  // Convert Thai date to sheet name
+  // Example: "25/11/2568" → "Nov 2568"
+  const [day, month, year] = thaiDate.split('/');
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${monthNames[parseInt(month) - 1]} ${year}`;
+}
+
+function getColumnLetter(index) {
+  let letter = '';
+  while (index >= 0) {
+    letter = String.fromCharCode((index % 26) + 65) + letter;
+    index = Math.floor(index / 26) - 1;
+  }
+  return letter;
+}
+```
+
+### **Backend: Webhook Integration**
+
+```javascript
+// backend/server.mjs (webhook endpoint)
+
+import { parseApprovalCommand, processApprovalCommand } from './utils/approvalHandler.js';
+
+app.post('/webhook', async (req, res) => {
+  try {
+    const events = req.body.events || [];
+    
+    for (const event of events) {
+      if (event.type === 'message' && event.message.type === 'text') {
+        const messageText = event.message.text;
+        const userId = event.source.userId;
+        
+        // Get user profile (manager name)
+        const profile = await getLineUserProfile(userId);
+        const managerName = profile.displayName;
+        
+        // Parse approval command
+        const command = parseApprovalCommand(messageText);
+        
+        if (command) {
+          // This is an approval command
+          console.log('📋 Approval command received:', command);
+          
+          // Determine environment from LINE group
+          const env = determineEnvironmentFromGroup(event.source.groupId);
+          
+          // Process the command
+          const result = await processApprovalCommand(command, managerName, env);
+          
+          if (result.success) {
+            // Send confirmation
+            await replyToLine(event.replyToken, result.message);
+          } else {
+            await replyToLine(event.replyToken, '❌ Failed to process approval. Please try again.');
+          }
+        }
+        // If not an approval command, ignore or handle other commands
+      }
+    }
+    
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(500).send('Error');
+  }
+});
+
+function determineEnvironmentFromGroup(groupId) {
+  const devGroupId = process.env.LINE_GROUP_ID_DEV;
+  const prodGroupId = process.env.LINE_GROUP_ID_PROD;
+  
+  if (groupId === devGroupId) return 'dev';
+  if (groupId === prodGroupId) return 'prod';
+  return 'prod'; // Default to prod
+}
+```
 
 ---
 
-## 🛠️ USEFUL COMMANDS FOR AI AGENTS
+## 🧪 TESTING GUIDE
 
-### Heroku Commands
+### **DevAdmin Authentication Testing**
+
 ```bash
-# Login
-heroku login
-
-# Check apps
-heroku apps --all
-
-# Check config
-heroku config --app liff-ot-app-positive
-
-# Check logs (real-time)
-heroku logs --tail --app liff-ot-app-positive
-
-# Check database
-heroku pg:info --app liff-ot-app-positive
-heroku pg:psql --app liff-ot-app-positive
-
-# Add environment variable
-heroku config:set KEY=value --app liff-ot-app-positive
-
-# Deploy
-git push heroku main
-
-# Rollback (if deployment fails)
-heroku releases:rollback --app liff-ot-app-positive
-
-# Run command on Heroku
-heroku run <command> --app liff-ot-app-positive
-```
-
-### Database Commands
-```bash
-# Connect to database
-heroku pg:psql --app liff-ot-app-positive
-
-# Inside psql:
-\l          # List databases
-\dt         # List tables
-\d drivers  # Describe drivers table
-SELECT * FROM drivers;  # Query drivers
-
-# Backup database (manual)
-heroku pg:backups:capture --app liff-ot-app-positive
-heroku pg:backups:download --app liff-ot-app-positive
-```
-
-### Strapi Commands
-```bash
-# Build admin panel
-npm run strapi build
-
-# Start Strapi
-npm run strapi develop  # Development
-npm run strapi start    # Production
-
-# Create admin user
-npm run strapi admin:create-user \
-  --firstname=Admin \
-  --lastname=User \
-  --email=admin@example.com \
-  --password=SecurePass123
-
-# Generate API token
-npm run strapi admin:create-api-token
-```
-
-### Testing Commands
-```bash
-# Test backend health
-curl https://liff-ot-app-positive.herokuapp.com/health
-
-# Test Strapi API
-curl https://liff-ot-app-positive.herokuapp.com/api
-
-# Test drivers endpoint
-curl https://liff-ot-app-positive.herokuapp.com/api/drivers
-
-# Test clock-in (with data)
-curl -X POST https://liff-ot-app-positive.herokuapp.com/clock-event \
+# Test 1: Successful DevAdmin Login
+curl -X POST http://localhost:3001/auth/devadmin \
   -H "Content-Type: application/json" \
   -d '{
-    "driverName": "Test Driver",
-    "thaiDate": "14/11/2568",
-    "type": "clockIn",
-    "timestamp": "08:00",
-    "env": "prod"
+    "username": "devadmin",
+    "password": "correct_password"
+  }'
+
+# Expected Response:
+# {
+#   "success": true,
+#   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+#   "user": {
+#     "username": "devadmin",
+#     "role": "devadmin"
+#   }
+# }
+
+# Test 2: Failed DevAdmin Login (wrong password)
+curl -X POST http://localhost:3001/auth/devadmin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "devadmin",
+    "password": "wrong_password"
+  }'
+
+# Expected Response:
+# {
+#   "success": false,
+#   "message": "Invalid credentials"
+# }
+
+# Test 3: Verify DevAdmin Token
+TOKEN="<token_from_login>"
+curl -X GET http://localhost:3001/auth/verify-devadmin \
+  -H "Authorization: Bearer $TOKEN"
+
+# Expected Response:
+# {
+#   "success": true,
+#   "user": {
+#     "username": "devadmin",
+#     "role": "devadmin"
+#   }
+# }
+
+# Test 4: Access Protected Endpoint (without token)
+curl -X GET http://localhost:3001/api/dev-only-endpoint
+
+# Expected Response:
+# {
+#   "success": false,
+#   "message": "Unauthorized"
+# }
+
+# Test 5: Access Protected Endpoint (with token)
+curl -X GET http://localhost:3001/api/dev-only-endpoint \
+  -H "Authorization: Bearer $TOKEN"
+
+# Expected Response:
+# {
+#   "success": true,
+#   "data": {...}
+# }
+```
+
+### **Approval Handler Testing**
+
+```bash
+# Test 1: Submit Attendance (should set status to "Pending")
+curl -X POST http://localhost:3001/submit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "driverName": "Jean",
+    "thaiDate": "16/11/2568",
+    "clockIn": "08:00",
+    "clockOut": "18:00",
+    "comments": "Test approval",
+    "env": "dev"
+  }'
+
+# Check Google Sheets - status should be "Pending"
+
+# Test 2: Simulate Approval Command from LINE
+# (In real scenario, this comes via webhook)
+curl -X POST http://localhost:3001/webhook \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [{
+      "type": "message",
+      "message": {
+        "type": "text",
+        "text": "approve Jean 16/11/2568"
+      },
+      "source": {
+        "userId": "U1234567890",
+        "groupId": "G1234567890"
+      },
+      "replyToken": "test_reply_token"
+    }]
+  }'
+
+# Check Google Sheets - status should be "Approved"
+
+# Test 3: Get Approval Status
+curl -X GET http://localhost:3001/api/attendances/1/approval-status
+
+# Expected Response:
+# {
+#   "success": true,
+#   "status": "Approved",
+#   "approvedBy": "Manager Name",
+#   "approvedAt": "2025-11-16T10:30:00Z"
+# }
+```
+
+### **Environment Guard Testing**
+
+```javascript
+// Test in browser console (logged in as regular user)
+
+// Test 1: Check isDevAdmin
+console.log('isDevAdmin:', localStorage.getItem('devadmin_token') !== null);
+// Should be: false
+
+// Test 2: Try to access dev environment
+const env = getEnvironment('dev', false);
+console.log('Environment:', env);
+// Should be: 'prod'
+
+// Test 3: Check if dev tools are visible
+const devTools = document.querySelector('.dev-tools-section');
+console.log('Dev tools visible:', devTools !== null);
+// Should be: false
+
+// Now login as devadmin and repeat
+
+// Test 4: Check isDevAdmin (after login)
+console.log('isDevAdmin:', localStorage.getItem('devadmin_token') !== null);
+// Should be: true
+
+// Test 5: Try to access dev environment (after login)
+const envAdmin = getEnvironment('dev', true);
+console.log('Environment:', envAdmin);
+// Should be: 'dev'
+
+// Test 6: Check if dev tools are visible (after login)
+const devToolsAdmin = document.querySelector('.dev-tools-section');
+console.log('Dev tools visible:', devToolsAdmin !== null);
+// Should be: true
+```
+
+---
+
+## 📊 SUCCESS METRICS
+
+### **We've succeeded when:**
+
+#### DevAdmin Access Control:
+1. ✅ DevAdmin can login with environment credentials
+2. ✅ DevAdmin sees all dev tools and environment toggle
+3. ✅ DevAdmin can switch between dev and prod environments
+4. ✅ Regular users cannot see dev tools or environment toggle
+5. ✅ Regular users locked to prod environment only
+6. ✅ Direct URL access to dev features blocked for regular users
+7. ✅ Tokens expire and refresh correctly
+8. ✅ Security: No credentials in frontend code
+9. ✅ Security: Passwords hashed with bcrypt
+10. ✅ Security: JWT tokens properly validated
+
+#### Approval Handler:
+1. ✅ Attendance submitted → status set to "Pending"
+2. ✅ Manager sends "approve" command → status updates to "Approved"
+3. ✅ Manager sends "reject" command → status updates to "Rejected"
+4. ✅ Approval status visible in Google Sheets
+5. ✅ Approval status visible in Strapi (if record exists)
+6. ✅ Approval status visible in frontend UI
+7. ✅ Confirmation notification sent to manager after approval
+8. ✅ Invalid commands ignored gracefully
+9. ✅ Duplicate approvals prevented
+10. ✅ Approval history tracked (who, when, status)
+
+#### Integration & User Experience:
+1. ✅ End-to-end flow: Submit → Pending → Approve → Approved works
+2. ✅ End-to-end flow: Submit → Pending → Reject → Rejected works
+3. ✅ UI shows real-time approval status updates
+4. ✅ Manager view includes approval status filter
+5. ✅ DevAdmin can perform bulk approvals
+6. ✅ System works in both dev and prod environments
+7. ✅ No performance degradation
+8. ✅ All existing features still work
+9. ✅ Documentation updated and complete
+10. ✅ Team trained on new features
+
+---
+
+## 🚨 KNOWN RISKS & MITIGATION
+
+### **Risk 1: Environment Variable Security**
+- **Risk:** DevAdmin credentials stored in environment variables could be exposed
+- **Likelihood:** Low
+- **Impact:** High
+- **Mitigation:**
+  - Use bcrypt hashed passwords, not plain text
+  - Rotate credentials regularly
+  - Use Heroku's secure config vars (not committed to git)
+  - Implement rate limiting on auth endpoints
+  - Monitor for failed login attempts
+  - Use HTTPS only in production
+- **Fallback:** If credentials compromised, rotate immediately via Heroku dashboard
+
+### **Risk 2: Approval Command Parsing**
+- **Risk:** Complex approval commands might fail to parse correctly
+- **Likelihood:** Medium
+- **Impact:** Medium
+- **Mitigation:**
+  - Simple, strict command syntax
+  - Clear documentation for managers
+  - Comprehensive regex testing
+  - Fallback to manual approval via Strapi admin
+- **Fallback:** Provide web-based approval UI as alternative
+
+### **Risk 3: Google Sheets Race Conditions**
+- **Risk:** Concurrent approvals might cause data conflicts
+- **Likelihood:** Low (small team, infrequent approvals)
+- **Impact:** Medium
+- **Mitigation:**
+  - Read-modify-write pattern
+  - Check current status before updating
+  - Use Google Sheets API's conditional update (if available)
+  - Log all approval attempts
+- **Fallback:** Manual correction in Google Sheets
+
+### **Risk 4: Token Management**
+- **Risk:** JWT tokens might expire during active session
+- **Likelihood:** Medium
+- **Impact:** Low (just re-login)
+- **Mitigation:**
+  - 24-hour token expiry (reasonable for daily use)
+  - Clear error message on expiry
+  - Easy re-login flow
+  - Consider refresh token mechanism (future)
+- **Fallback:** User re-logs in
+
+### **Risk 5: Backward Compatibility**
+- **Risk:** New approval system might break existing attendance flow
+- **Likelihood:** Low
+- **Impact:** High
+- **Mitigation:**
+  - Approval status optional (default to "Approved" if not set)
+  - Existing records continue to work
+  - Gradual rollout with feature flag
+  - Extensive testing before production
+- **Fallback:** Disable approval feature via environment variable
+
+---
+
+## 📝 DOCUMENTATION REQUIREMENTS
+
+### **Technical Documentation:**
+1. **DEVADMIN_GUIDE.md** - How to use devadmin features
+2. **APPROVAL_SYSTEM.md** - How approval system works
+3. **API_REFERENCE.md** - Update with new endpoints
+4. **SECURITY.md** - Security considerations and best practices
+5. **TROUBLESHOOTING.md** - Common issues and solutions
+
+### **User Documentation:**
+1. **MANAGER_GUIDE.md** - How to approve/reject via LINE
+2. **DRIVER_GUIDE.md** - How to see approval status (if applicable)
+3. **ADMIN_GUIDE.md** - How to manage devadmin access
+
+### **Code Documentation:**
+- Inline comments for complex logic
+- JSDoc for all public functions
+- README in each new folder/module
+- Architecture Decision Records (ADRs) for major decisions
+
+---
+
+## 🎯 TIMELINE & MILESTONES
+
+### **Week 1: DevAdmin Foundation**
+- **Days 1-2:** Backend auth endpoints + JWT implementation
+- **Days 3-4:** Frontend login component + auth context
+- **Day 5:** Testing + security hardening
+- **Milestone:** DevAdmin can login and token validation works
+
+### **Week 2: Conditional Rendering**
+- **Days 1-2:** Update StyledForm.jsx with conditional dev tools
+- **Days 3-4:** Environment guard + all API updates
+- **Day 5:** Testing + UI polish
+- **Milestone:** Dev tools hidden from regular users, visible to devadmin
+
+### **Week 3: Approval System**
+- **Days 1-2:** Enhance approvalHandler.js + webhook integration
+- **Days 3-4:** Google Sheets updates + Strapi sync
+- **Day 5:** Testing approval flow end-to-end
+- **Milestone:** Approval commands work via LINE webhook
+
+### **Week 4: UI & Polish**
+- **Days 1-2:** Approval status badges + manager view updates
+- **Days 3-4:** Approval history component
+- **Day 5:** Final testing + bug fixes
+- **Milestone:** All UI components complete and tested
+
+### **Week 5: Production Readiness**
+- **Days 1-2:** Security audit + performance testing
+- **Days 3-4:** Documentation + training materials
+- **Day 5:** Production deployment + handoff
+- **Milestone:** System live in production
+
+---
+
+## 🛠️ QUICK REFERENCE COMMANDS
+
+### **Generate bcrypt hash for devadmin password:**
+```bash
+# Install bcrypt (if not installed)
+npm install bcrypt
+
+# Generate hash (run in Node REPL or create script)
+node -e "const bcrypt = require('bcrypt'); bcrypt.hash('your_password', 10).then(hash => console.log(hash));"
+
+# Output example:
+# $2b$10$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123
+```
+
+### **Set Heroku environment variables:**
+```bash
+# DevAdmin credentials
+heroku config:set DEVADMIN_USERNAME=devadmin --app liff-ot-app-arun
+heroku config:set DEVADMIN_PASSWORD_HASH='$2b$10$...' --app liff-ot-app-arun
+
+# JWT secret (generate random)
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+heroku config:set JWT_SECRET='<generated_secret>' --app liff-ot-app-arun
+
+# Verify
+heroku config --app liff-ot-app-arun | grep DEVADMIN
+```
+
+### **Test DevAdmin login locally:**
+```bash
+# Start backend
+cd backend
+npm run dev
+
+# In another terminal, test auth
+curl -X POST http://localhost:3001/auth/devadmin \
+  -H "Content-Type: application/json" \
+  -d '{"username":"devadmin","password":"your_password"}'
+
+# Should return JWT token
+```
+
+### **Test approval command:**
+```bash
+# Simulate LINE webhook message
+curl -X POST http://localhost:3001/webhook \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [{
+      "type": "message",
+      "message": {"type": "text", "text": "approve Jean 16/11/2568"},
+      "source": {"userId": "U123", "groupId": "G123"},
+      "replyToken": "test"
+    }]
   }'
 ```
 
 ---
 
-## 📚 IMPORTANT DOCUMENTATION REFERENCES
+## ✅ FINAL CHECKLIST
 
-### External Docs
-- Strapi Docs: https://docs.strapi.io
-- Heroku PostgreSQL: https://devcenter.heroku.com/articles/heroku-postgresql
-- LINE LIFF: https://developers.line.biz/en/docs/liff/
-- Google Sheets API: https://developers.google.com/sheets/api
+### **Before Production Deployment:**
 
-### Internal Docs (in `/docs/Guides for Use/`)
-- `STRAPI_HEROKU_DEPLOYMENT.md` - Detailed Strapi deployment guide
-- `DEPLOY_STRAPI_HEROKU_PROD.md` - Production deployment steps
-- `HEROKU_DEPLOYMENT.md` - General Heroku deployment
-- `GOOGLE_SHEETS_SETUP.md` - Google Sheets API setup
-- `ENV_SETUP.md` - Environment variables guide
+#### Security:
+- [ ] DevAdmin password strong (min 16 characters, mixed case, numbers, symbols)
+- [ ] bcrypt hash generated and stored in Heroku
+- [ ] JWT_SECRET is random and strong
+- [ ] No credentials in frontend code
+- [ ] No credentials in git history
+- [ ] HTTPS enforced in production
+- [ ] httpOnly cookies configured
+- [ ] Rate limiting on auth endpoints
+- [ ] Token expiry set appropriately
+- [ ] Security audit completed
 
-### Key Code Files to Understand
-1. `server.mjs` - Main Express server, all API endpoints
-2. `googleSheetsHandler.js` - Google Sheets integration, OT calculation
-3. `src/components/StyledForm.jsx` - Main UI, form logic
-4. `backend/strapi/config/database.js` - Database configuration
+#### Functionality:
+- [ ] DevAdmin login works
+- [ ] DevAdmin can see dev tools
+- [ ] Regular users cannot see dev tools
+- [ ] Environment guard prevents dev access
+- [ ] Approval commands parse correctly
+- [ ] Approval updates Google Sheets
+- [ ] Approval updates Strapi
+- [ ] Approval status visible in UI
+- [ ] Notifications sent correctly
+- [ ] All existing features still work
 
----
+#### Testing:
+- [ ] Unit tests pass (if implemented)
+- [ ] Integration tests pass
+- [ ] E2E tests pass
+- [ ] Security tests pass
+- [ ] Performance acceptable
+- [ ] Mobile testing complete
+- [ ] Cross-browser testing complete
+- [ ] Accessibility check (WCAG 2.1 Level AA)
 
-## 🎯 AI AGENT BEHAVIORAL GUIDELINES
+#### Documentation:
+- [ ] AGENTS.md updated
+- [ ] DEVADMIN_GUIDE.md created
+- [ ] APPROVAL_SYSTEM.md created
+- [ ] API_REFERENCE.md updated
+- [ ] MANAGER_GUIDE.md created
+- [ ] Code comments added
+- [ ] README updated
 
-### When Working on This Project:
+#### Deployment:
+- [ ] Backend deployed to Heroku
+- [ ] Frontend deployed to Vercel
+- [ ] Environment variables set
+- [ ] Database migrations run (if any)
+- [ ] Logs monitored for errors
+- [ ] Smoke tests passed
+- [ ] Rollback plan ready
 
-1. **Always Check Environment**
-   - Is this dev or prod?
-   - Which Google Sheet (dev/prod)?
-   - Which Strapi URL (local/prod)?
-   - Which LINE group (dev/prod)?
-
-2. **Never Commit Secrets**
-   - Double-check files before `git add`
-   - Use `.gitignore` for sensitive files
-   - Use environment variables, never hardcode
-
-3. **Test Before Deploying**
-   - Run locally first
-   - Check Heroku logs after deploy
-   - Verify with curl commands
-   - Test in browser
-
-4. **Document Changes**
-   - Update this AGENTS.md
-   - Add comments to code
-   - Update docs/ folder
-   - Note any issues/gotchas
-
-5. **Communicate Progress**
-   - Daily updates to PM
-   - Note blockers immediately
-   - Share test results
-   - Ask questions early
-
-6. **Prioritize Data Integrity**
-   - Google Sheets is source of truth (for now)
-   - Never delete production data
-   - Always backup before migrations
-   - Test with dummy data first
-
-7. **Be Timezone Aware**
-   - Always use Bangkok timezone (Asia/Bangkok)
-   - Always use Thai Buddhist calendar for display
-   - Test date edge cases (month end, year boundary)
-
-8. **Handle Errors Gracefully**
-   - User-friendly error messages
-   - Log errors with context
-   - Don't let one failure break everything
-   - Have rollback plans
+#### Handoff:
+- [ ] Team trained on new features
+- [ ] Documentation shared
+- [ ] Support process established
+- [ ] Contact information updated
+- [ ] Post-launch monitoring plan
 
 ---
 
-## 🔍 DEBUGGING CHECKLIST
+## 📞 SUPPORT & ESCALATION
 
-### If Deployment Fails:
-```
-1. Check Heroku logs
-   heroku logs --tail --app liff-ot-app-positive
-   
-2. Check if Strapi started
-   heroku ps --app liff-ot-app-positive
-   
-3. Check environment variables
-   heroku config --app liff-ot-app-positive
-   
-4. Check database connection
-   heroku pg:info --app liff-ot-app-positive
-   
-5. Check last releases
-   heroku releases --app liff-ot-app-positive
-   
-6. Rollback if needed
-   heroku releases:rollback --app liff-ot-app-positive
-```
-
-### If Database Connection Fails:
-```
-1. Verify DATABASE_URL is set
-   heroku config:get DATABASE_URL --app liff-ot-app-positive
-   
-2. Test connection manually
-   heroku pg:psql --app liff-ot-app-positive
-   
-3. Check database status
-   heroku pg:info --app liff-ot-app-positive
-   
-4. Check for credential rotation
-   (Heroku rotates credentials, may need to restart)
-   
-5. Restart dyno
-   heroku restart --app liff-ot-app-positive
-```
-
-### If Frontend Can't Reach Strapi:
-```
-1. Check CORS settings in server.mjs
-   - Is Vercel URL in allowedOrigins?
-   
-2. Check Strapi URL in frontend
-   - Vercel environment variables correct?
-   
-3. Test API directly
-   curl https://liff-ot-app-positive.herokuapp.com/api/drivers
-   
-4. Check browser console
-   - CORS errors?
-   - 404 errors?
-   - Network timeout?
-   
-5. Verify Strapi is running
-   heroku ps --app liff-ot-app-positive
-```
-
----
-
-## 📞 ESCALATION PATH
-
-### If You're Stuck:
+### **If You're Stuck:**
 1. **Check this file first** - Answer might be here
-2. **Check Heroku logs** - Error messages are helpful
-3. **Check documentation** - `/docs/Guides for Use/`
-4. **Ask PM** - Don't waste time if blocked
-5. **Check Strapi/Heroku docs** - Official documentation
-6. **Search GitHub issues** - Someone might have solved it
+2. **Check error logs** - Heroku logs, browser console
+3. **Review code examples** - Follow patterns shown above
+4. **Test in isolation** - Break down problem into smaller pieces
+5. **Ask PM** - Don't waste time if blocked
 
-### Critical Issues (Escalate Immediately):
+### **Critical Issues (Escalate Immediately):**
+- ❌ DevAdmin credentials compromised
+- ❌ Security vulnerability discovered
 - ❌ Production data loss
-- ❌ Security breach
-- ❌ Cannot deploy by Monday
-- ❌ Database corrupted
 - ❌ All users locked out
+- ❌ Approval system broken in production
 
-### Non-Critical Issues (Can be handled post-launch):
-- ⚠️ UI polish
+### **Non-Critical Issues (Can be handled post-launch):**
+- ⚠️ UI polish for approval badges
 - ⚠️ Performance optimization
-- ⚠️ Code refactoring
-- ⚠️ Missing tests
-- ⚠️ Documentation improvements
+- ⚠️ Additional approval commands
+- ⚠️ Bulk approval UI improvements
+- ⚠️ Approval history enhancements
 
 ---
 
----
+## 🎓 KEY LEARNINGS & BEST PRACTICES
 
-## ⚡ QUICK REFERENCE: Most Important Commands
+### **DevAdmin Pattern:**
+1. ✅ **DO:** Use environment variables for credentials
+2. ✅ **DO:** Hash passwords with bcrypt
+3. ✅ **DO:** Use JWT for stateless auth
+4. ✅ **DO:** Set httpOnly cookies
+5. ✅ **DO:** Implement token expiry
+6. ❌ **DON'T:** Store credentials in frontend
+7. ❌ **DON'T:** Commit credentials to git
+8. ❌ **DON'T:** Use plain text passwords
+9. ❌ **DON'T:** Skip rate limiting
+10. ❌ **DON'T:** Expose admin features to regular users
 
-### **Heroku Account Setup**
-```bash
-# Install Heroku CLI (macOS)
-brew tap heroku/brew && brew install heroku
+### **Approval System Pattern:**
+1. ✅ **DO:** Use simple, strict command syntax
+2. ✅ **DO:** Validate commands before processing
+3. ✅ **DO:** Update multiple data sources atomically
+4. ✅ **DO:** Send confirmation notifications
+5. ✅ **DO:** Log all approval attempts
+6. ❌ **DON'T:** Allow duplicate approvals
+7. ❌ **DON'T:** Trust user input without validation
+8. ❌ **DON'T:** Forget to handle errors gracefully
+9. ❌ **DON'T:** Skip status checks before updates
+10. ❌ **DON'T:** Expose internal errors to users
 
-# Login
-heroku login
-
-# Verify login
-heroku auth:whoami
-```
-
-### **Create New App with Database**
-```bash
-# Create app
-heroku create liff-ot-app-arun
-
-# Add PostgreSQL
-heroku addons:create heroku-postgresql:essential-0 --app liff-ot-app-arun
-
-# Verify database
-heroku pg:info --app liff-ot-app-arun
-heroku config:get DATABASE_URL --app liff-ot-app-arun
-```
-
-### **Set Environment Variables**
-```bash
-# Generate secrets (run 4 times)
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-
-# Set on Heroku
-heroku config:set ADMIN_JWT_SECRET="secret1" --app liff-ot-app-arun
-heroku config:set API_TOKEN_SALT="secret2" --app liff-ot-app-arun
-heroku config:set JWT_SECRET="secret3" --app liff-ot-app-arun
-heroku config:set APP_KEYS="s4,s5,s6,s7" --app liff-ot-app-arun
-heroku config:set NODE_ENV=production --app liff-ot-app-arun
-heroku config:set STRAPI_URL=https://liff-ot-app-arun.herokuapp.com --app liff-ot-app-arun
-
-# Copy from .env.local
-heroku config:set LINE_CHANNEL_ACCESS_TOKEN="..." --app liff-ot-app-arun
-heroku config:set VITE_LIFF_ID="..." --app liff-ot-app-arun
-# ... etc
-```
-
-### **Deploy**
-```bash
-# Add git remote
-heroku git:remote --app liff-ot-app-arun
-
-# Deploy
-git push heroku main
-
-# Monitor logs
-heroku logs --tail --app liff-ot-app-arun
-```
-
-### **Database Operations**
-```bash
-# Connect to database
-heroku pg:psql --app liff-ot-app-arun
-
-# Inside psql:
-\l          # List databases
-\dt         # List tables
-\d drivers  # Describe drivers table
-SELECT * FROM drivers;  # Query
-\q          # Quit
-
-# Database info
-heroku pg:info --app liff-ot-app-arun
-
-# Backup
-heroku pg:backups:capture --app liff-ot-app-arun
-```
-
-### **Testing**
-```bash
-# Test backend
-curl https://liff-ot-app-arun.herokuapp.com/health
-
-# Test Strapi
-curl https://liff-ot-app-arun.herokuapp.com/api
-
-# Test drivers
-curl https://liff-ot-app-arun.herokuapp.com/api/drivers
-```
-
-### **Troubleshooting**
-```bash
-# Check app status
-heroku ps --app liff-ot-app-arun
-
-# Check logs
-heroku logs --tail --app liff-ot-app-arun
-
-# Check config
-heroku config --app liff-ot-app-arun
-
-# Restart app
-heroku restart --app liff-ot-app-arun
-
-# Rollback deployment
-heroku releases:rollback --app liff-ot-app-arun
-```
+### **Security Best Practices:**
+1. Defense in depth (multiple layers)
+2. Principle of least privilege
+3. Never trust client-side validation
+4. Always validate on backend
+5. Use HTTPS in production
+6. Rotate credentials regularly
+7. Monitor for suspicious activity
+8. Log security events
+9. Keep dependencies updated
+10. Review code for vulnerabilities
 
 ---
 
-## ✅ FINAL PRE-LAUNCH CHECKLIST
+## 🚀 NEXT STEPS AFTER COMPLETION
 
-```markdown
-# Monday Morning Go-Live Checklist
+### **Immediate (Week 1 after launch):**
+1. Monitor logs for errors
+2. Gather user feedback
+3. Fix critical bugs
+4. Document any workarounds
+5. Update documentation based on real usage
 
-## System Health
-- [ ] Heroku dyno running (heroku ps)
-- [ ] Database accessible (heroku pg:info)
-- [ ] Strapi admin loads (visit URL)
-- [ ] Frontend loads (visit Vercel URL)
-- [ ] API responds (curl health check)
+### **Short-term (Month 1):**
+1. Add web-based approval UI (reduce LINE dependency)
+2. Implement approval notifications to drivers
+3. Add approval analytics/reporting
+4. Optimize performance based on usage patterns
+5. Enhance security based on audit findings
 
-## Data Verification
-- [ ] Drivers imported (check Strapi admin)
-- [ ] Test attendance record created
-- [ ] Google Sheets syncing
-- [ ] LINE notifications working
-
-## Access & Permissions
-- [ ] Admin credentials provided to PM
-- [ ] Arun team has Strapi access
-- [ ] Google Sheets shared with team
-- [ ] LINE bot in correct group
-
-## Documentation
-- [ ] Production guide delivered
-- [ ] Troubleshooting guide delivered
-- [ ] Support process documented
-- [ ] Contact information shared
-
-## Testing
-- [ ] End-to-end flow tested
-- [ ] OT calculation verified
-- [ ] Multi-language tested
-- [ ] Mobile responsiveness verified
-
-## Monitoring
-- [ ] Heroku logs clear (no critical errors)
-- [ ] Database usage normal
-- [ ] API response times acceptable
-- [ ] No user-reported issues
-
-## Communication
-- [ ] PM notified of completion
-- [ ] Arun team notified
-- [ ] Demo scheduled (if needed)
-- [ ] Support available
-```
+### **Long-term (Quarter 1):**
+1. Migrate to role-based access control (RBAC) system
+2. Add more granular permissions
+3. Implement approval workflows (multi-step approvals)
+4. Create audit trail for all approvals
+5. Build approval dashboard for managers
 
 ---
 
-## 🎬 QUICK START FOR AI AGENTS
+**END OF UPDATED AGENTS.MD**
 
-**If you're an AI agent starting work on this project, here's what to do:**
-
-1. **Read this entire file** (you're doing it now! ✓)
-2. **Check current phase** (see timeline above)
-3. **Verify prerequisites** (access granted? database created?)
-4. **Follow the phase you're in** (step-by-step tasks)
-5. **Test thoroughly** (use testing commands)
-6. **Document changes** (update this file if needed)
-7. **Communicate progress** (daily updates to PM)
-
-**Need to make a code change?**
-- Read the "Critical Files" section first
-- Understand current behavior before changing
-- Test locally before deploying
-- Have rollback plan ready
-- Update documentation
-
-**Need to deploy?**
-- Follow Phase 4 deployment steps
-- Monitor logs during deployment
-- Verify with testing commands
-- Update this file with any learnings
-
-**Stuck or confused?**
-- Re-read relevant section in this file
-- Check `/docs/Guides for Use/` folder
-- Check Heroku logs for errors
-- Ask PM for clarification
-
----
-
-## 📝 NOTES & LEARNINGS (Update as you go)
-
-### 2025-11-14: Initial Planning
-- Created comprehensive migration plan
-- Identified critical deadline: Monday
-- Documented current architecture and issues
-- Prepared testing checklists
-- Waiting for Heroku/Vercel access
-
-### [Add Your Notes Here]
-- Date: YYYY-MM-DD
-- What you did:
-- What worked:
-- What didn't work:
-- Lessons learned:
-- Next steps:
-
----
-
-## 🎯 SUCCESS DEFINITION
-
-**We've succeeded when:**
-1. ✅ Arun team can log in to Strapi admin on Monday
-2. ✅ Drivers can clock in/out via LINE LIFF app
-3. ✅ Attendance data saves to PostgreSQL database
-4. ✅ Google Sheets continues to work (backwards compatibility)
-5. ✅ LINE notifications send to managers
-6. ✅ OT calculates correctly
-7. ✅ System is stable and monitored
-8. ✅ Documentation is complete and clear
-9. ✅ PM is satisfied with handoff
-10. ✅ Arun team is trained and ready
-
----
-
-**END OF AGENTS.MD**
-
-*This file should be updated as the project evolves. Keep it as the single source of truth for AI agents working on this project.*
+*This file should be the single source of truth for implementing role-based dev tools and approval system.*
 
 ---
 
 **Last Modified By:** Claude AI Assistant  
-**Last Modified Date:** November 14, 2025  
-**Version:** 1.0  
-**Status:** Ready for Production Migration
+**Last Modified Date:** November 16, 2025  
+**Version:** 2.0  
+**Status:** Ready for Feature Development
