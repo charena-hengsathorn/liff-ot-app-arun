@@ -2739,8 +2739,8 @@ function StyledForm() {
   };
 
   return (
-    <div 
-      className={isDarkMode ? 'dark-mode' : ''} 
+    <div
+      className={isDarkMode ? 'dark-mode' : ''}
       style={{
       minHeight: "100vh",
       width: "100vw",
@@ -2756,9 +2756,48 @@ function StyledForm() {
       paddingRight: isMobile() ? "5px" : "0",
       paddingBottom: isMobile() ? "10px" : "0",
       boxSizing: "border-box",
+      position: "relative"
       }}
       onClick={closeAllDropdowns}
     >
+      {/* Logout Button - Outside form, upper right */}
+      <button
+        type="button"
+        onClick={handleLogout}
+        title="Logout"
+        style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          zIndex: 1001,
+          padding: isMobile() ? '8px 12px' : '10px 16px',
+          fontSize: '16px',
+          borderRadius: '17px',
+          background: isDarkMode ? '#27272a' : '#fff',
+          color: isDarkMode ? '#f1f5f9' : '#333',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          transition: 'all 0.2s ease',
+          border: 'none',
+          fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
+          fontWeight: '500'
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        }}
+      >
+        🚪
+        {!isMobile() && <span>Logout</span>}
+      </button>
+
       <form
         style={{
           width: "80vw",
@@ -2781,48 +2820,13 @@ function StyledForm() {
         autoComplete="off"
         onSubmit={handleSubmit}
       >
-        {/* Language Switcher and Logout Buttons */}
+        {/* Language Switcher Button */}
         <div style={{
           position: 'absolute',
           top: '17px',
           right: '20px',
-          zIndex: 1000,
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'center'
+          zIndex: 1000
         }}>
-          {/* Logout Button */}
-          <button
-            type="button"
-            onClick={handleLogout}
-            title="Logout"
-            style={{
-              padding: '8px 12px',
-              fontSize: '16px',
-              borderRadius: '17px',
-              background: isDarkMode ? '#27272a' : '#fff',
-              color: isDarkMode ? '#f1f5f9' : '#333',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              transition: 'all 0.2s ease',
-              border: 'none'
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'translateY(-1px)';
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-            }}
-          >
-            🚪
-          </button>
-
-          {/* Language Switcher Button */}
           <button
             type="button"
             onClick={() => {
