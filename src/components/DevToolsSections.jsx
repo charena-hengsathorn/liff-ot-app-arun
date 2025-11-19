@@ -24,23 +24,6 @@ export default function DevToolsSections({
   manualTestOTResult,
   clearManualTest,
 
-  // Day of Week Updater props
-  dayOfWeekUpdaterData,
-  handleDayOfWeekUpdaterChange,
-  handleUpdateDayOfWeek,
-  isUpdatingDayOfWeek,
-
-  // Manual OT Calculation props
-  manualOTData,
-  setManualOTData,
-  handleManualOTChange,
-  handleCalculateOT,
-  isCalculatingOT,
-  manualOTResult,
-  otCalculationData,
-  handleReadRow,
-  isReadingRow,
-
   // Dev Tool Buttons props
   testAutoSubmit,
   clearExistingEntryCache,

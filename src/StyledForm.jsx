@@ -4781,23 +4781,6 @@ function StyledForm() {
                 manualTestOTResult={manualTestOTResult}
                 clearManualTest={clearManualTest}
 
-                // Day of Week Updater props
-                dayOfWeekUpdaterData={dayOfWeekUpdaterData}
-                handleDayOfWeekUpdaterChange={handleDayOfWeekUpdaterChange}
-                handleUpdateDayOfWeek={handleUpdateDayOfWeek}
-                isUpdatingDayOfWeek={isUpdatingDayOfWeek}
-
-                // Manual OT Calculation props
-                manualOTData={manualOTData}
-                setManualOTData={setManualOTData}
-                handleManualOTChange={handleManualOTChange}
-                handleCalculateOT={handleCalculateOT}
-                isCalculatingOT={isCalculatingOT}
-                manualOTResult={manualOTResult}
-                otCalculationData={otCalculationData}
-                handleReadRow={handleReadRow}
-                isReadingRow={isReadingRow}
-
                 // Dev Tool Buttons props
                 testAutoSubmit={testAutoSubmit}
                 clearExistingEntryCache={clearExistingEntryCache}
