@@ -4,6 +4,8 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from ".
 import LoadingAnimation from './components/LoadingAnimation';
 import { useDevAdminContext } from './contexts/DevAdminContext';
 import { getSafeEnvironment } from './utils/envGuard';
+import DevToolsButton from './components/DevToolsButton';
+import DevToolsPanel, { ToolSection } from './components/DevToolsPanel';
 
 function isMobile() {
   if (typeof navigator === "undefined") return false;
@@ -190,13 +192,16 @@ function StyledForm() {
   const location = useLocation();
   // DevAdmin context for conditional dev tools rendering
   const { isDevAdmin, loading: devAdminLoading } = useDevAdminContext();
+
+  // Dev Tools Panel state
+  const [isDevPanelOpen, setIsDevPanelOpen] = useState(false);
   
   // Add CSS animation for modal
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@100;200;300;400;500;600;700;800;900&display=swap');
-      
+
       @keyframes modalSlideIn {
         from {
           opacity: 0;
@@ -207,7 +212,7 @@ function StyledForm() {
           transform: scale(1) translateY(0);
         }
       }
-      
+
       @keyframes spin {
         from {
           transform: rotate(0deg);
@@ -216,7 +221,7 @@ function StyledForm() {
           transform: rotate(360deg);
         }
       }
-      
+
       .noto-sans-thai {
         font-family: "Noto Sans Thai", sans-serif;
         font-optical-sizing: auto;
@@ -224,7 +229,7 @@ function StyledForm() {
         font-style: normal;
         font-variation-settings: "wdth" 100;
       }
-      
+
       .noto-sans-thai-light {
         font-family: "Noto Sans Thai", sans-serif;
         font-optical-sizing: auto;
@@ -232,7 +237,7 @@ function StyledForm() {
         font-style: normal;
         font-variation-settings: "wdth" 100;
       }
-      
+
       .noto-sans-thai-medium {
         font-family: "Noto Sans Thai", sans-serif;
         font-optical-sizing: auto;
@@ -240,7 +245,7 @@ function StyledForm() {
         font-style: normal;
         font-variation-settings: "wdth" 100;
       }
-      
+
       .noto-sans-thai-bold {
         font-family: "Noto Sans Thai", sans-serif;
         font-optical-sizing: auto;
@@ -252,6 +257,24 @@ function StyledForm() {
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
   }, []);
+
+  // Keyboard shortcuts for Dev Tools Panel
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      // Escape to close dev panel
+      if (e.key === 'Escape' && isDevPanelOpen) {
+        setIsDevPanelOpen(false);
+      }
+      // Ctrl/Cmd + K to toggle dev panel (DevAdmin only)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k' && isDevAdmin) {
+        e.preventDefault();
+        setIsDevPanelOpen(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isDevPanelOpen, isDevAdmin]);
 
   // Remove OT Start/End from formData
   const [formData, setFormData] = useState({
@@ -2702,44 +2725,6 @@ function StyledForm() {
       }}
       onClick={closeAllDropdowns}
     >
-      {/* Environment Switcher Button - Top Right (DevAdmin Only) */}
-      {isDevAdmin && !(location.pathname === '/prod' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') && (
-        <button
-          type="button"
-          onClick={() => {
-            const newEnv = getEffectiveUIEnv() === 'dev' ? 'prod' : 'dev';
-            setCookie('uiEnvironment', newEnv, 7);
-            window.location.reload();
-          }}
-          style={{
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            zIndex: 1000,
-            padding: '8px 16px',
-            borderRadius: '20px',
-            border: 'none',
-            background: getEffectiveUIEnv() === 'dev' ? '#10b981' : '#ef4444',
-            color: '#ffffff',
-            fontSize: '12px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            transition: 'all 0.2s ease',
-            fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
-          }}
-          onMouseOver={(e) => {
-            e.target.style.transform = 'scale(1.05)';
-            e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
-          }}
-          onMouseOut={(e) => {
-            e.target.style.transform = 'scale(1)';
-            e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-          }}
-        >
-          {getEffectiveUIEnv() === 'dev' ? '🔧 DEV' : '🚀 PROD'}
-        </button>
-      )}
       <form
         style={{
           width: "80vw",
@@ -4754,6 +4739,56 @@ function StyledForm() {
         type={modalType}
         onClose={() => setShowModal(false)}
       />
+
+      {/* Dev Tools (Only for DevAdmin) */}
+      {isDevAdmin && (
+        <>
+          {/* Floating Gear Button */}
+          <DevToolsButton
+            onClick={() => setIsDevPanelOpen(true)}
+            isOpen={isDevPanelOpen}
+          />
+
+          {/* Sliding Panel with Dev Tools */}
+          <DevToolsPanel
+            isOpen={isDevPanelOpen}
+            onClose={() => setIsDevPanelOpen(false)}
+            env={getEffectiveUIEnv()}
+            onEnvChange={(newEnv) => {
+              setCookie('uiEnvironment', newEnv, 7);
+              window.location.reload();
+            }}
+          >
+            {/* Dev Tools Quick Actions */}
+            {getEffectiveUIEnv() === 'dev' && (
+              <>
+                <ToolSection
+                  icon={<FileSpreadsheet size={20} />}
+                  title="Quick Info"
+                  description="Current environment and status"
+                >
+                  <div style={{ fontSize: '13px', color: '#d1d5db' }}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <span style={{ color: '#9ca3af' }}>Environment:</span>{' '}
+                      <span style={{ fontWeight: 'bold', color: '#10b981' }}>{getEffectiveUIEnv()}</span>
+                    </div>
+                    <div style={{ marginBottom: '8px' }}>
+                      <span style={{ color: '#9ca3af' }}>Status:</span>{' '}
+                      <span style={{ color: '#3b82f6' }}>Dev Tools Active</span>
+                    </div>
+                    <div style={{ padding: '12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '6px', marginTop: '12px' }}>
+                      <div style={{ fontSize: '12px', color: '#93c5fd', marginBottom: '4px' }}>ℹ️ Info</div>
+                      <div style={{ fontSize: '12px', color: '#d1d5db' }}>
+                        Full dev tools sections are located below the main form. They will be migrated into this panel in the next update.
+                      </div>
+                    </div>
+                  </div>
+                </ToolSection>
+              </>
+            )}
+          </DevToolsPanel>
+        </>
+      )}
     </div>
   );
 }
