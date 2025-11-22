@@ -1,6 +1,19 @@
 .vercel
 node_modules
 
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Development files
+.cursorrules
+*_GUIDE.md
+HEROKU_CONSOLIDATION_GUIDE.md
+VERCEL_MIGRATION_GUIDE.md
+VERCEL_ENV_SETUP_FOR_PM.md
+Guides for Use/
+
 # Strapi (if installed in strapi/ folder)
 strapi/.tmp/
 strapi/build/
