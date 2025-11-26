@@ -1,0 +1,37 @@
+# Backend files - DO NOT deploy to Vercel
+server/
+server.mjs
+strapi/
+utils/
+
+# Backend-only scripts
+*.mjs
+create-user.js
+check-driver-schema.js
+reset-admin-password.js
+test-*.js
+update-*.js
+
+# Heroku deployment
+Procfile
+Procfile.strapi
+
+# Credentials
+google-credentials.json
+cookies.txt
+prod-cookies*.txt
+
+# Documentation (backend-specific)
+HEROKU_CONSOLIDATION_GUIDE.md
+DEVADMIN_IMPLEMENTATION.md
+AGENTS.md
+APPAnalysis.md
+DEV_TOOLS_UI_ENHANCEMENT.md
+DAY_OF_WEEK_UPDATE_README.md
+docs/
+
+# Development
+.env.local
+.cursorrules
+.cursor/
+.claude/

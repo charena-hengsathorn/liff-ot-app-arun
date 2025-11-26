@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import { createProxyMiddleware } from 'http-proxy-middleware';
-import { handleGoogleSheetsRequest, createMonthlySheet, readLoginHistoryFromSheet, getLastClockInForDriver, getLastClockInsForDrivers } from './src/googleSheetsHandler.js';
-import { setupAuthRoutes } from './src/login/authRoutes.js';
+import { handleGoogleSheetsRequest, createMonthlySheet, readLoginHistoryFromSheet, getLastClockInForDriver, getLastClockInsForDrivers } from './server/googleSheetsHandler.js';
+import { setupAuthRoutes } from './server/authRoutes.js';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 // DevAdmin authentication utilities

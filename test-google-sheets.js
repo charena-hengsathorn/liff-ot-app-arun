@@ -1,4 +1,4 @@
-import { handleGoogleSheetsRequest } from './src/googleSheetsHandler.js';
+import { handleGoogleSheetsRequest } from './server/googleSheetsHandler.js';
 
 // Test function
 async function testGoogleSheets() {

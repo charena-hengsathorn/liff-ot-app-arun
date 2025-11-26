@@ -8,11 +8,16 @@ node_modules
 
 # Development files
 .cursorrules
-*_GUIDE.md
+Guides for Use/
+
+# Internal documentation (keep local only)
+DEPLOYMENT_WORKFLOW.md
+FRONTEND_DEPLOY_GUIDE.md
+HEROKU_CONFIG_CHECK.md
+SEPARATION_SUMMARY.md
 HEROKU_CONSOLIDATION_GUIDE.md
 VERCEL_MIGRATION_GUIDE.md
-VERCEL_ENV_SETUP_FOR_PM.md
-Guides for Use/
+package.json.frontend
 
 # Strapi (if installed in strapi/ folder)
 strapi/.tmp/

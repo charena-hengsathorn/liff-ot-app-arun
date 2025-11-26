@@ -1,4 +1,4 @@
-import { getSheetNameFromDate, checkExistingEntry } from './src/googleSheetsHandler.js';
+import { getSheetNameFromDate, checkExistingEntry } from './server/googleSheetsHandler.js';
 
 console.log('🧪 Testing Monthly Sheet Resolution...\n');
 
