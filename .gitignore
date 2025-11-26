@@ -6,6 +6,9 @@ node_modules
 .env.local
 .env.production
 
+# Credentials (use environment variables in production)
+google-credentials.json
+
 # Development files
 .cursorrules
 Guides for Use/
