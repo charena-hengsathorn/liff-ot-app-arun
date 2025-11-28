@@ -23,13 +23,13 @@ export default function DevToolsPanel({
 
   // Creative color schemes
   const theme = lightMode ? {
-    // ✨ Light mode - Soft iOS-style theme
-    background: 'linear-gradient(135deg, #f5f5f7 0%, #e5e5ea 100%)',
-    headerBg: 'rgba(255, 255, 255, 0.95)',
-    headerBorder: '#d1d1d6',
-    textPrimary: '#1d1d1f',
-    textSecondary: '#6e6e73',
-    cardBg: '#ffffff',
+    // ✨ Light mode - Clean white iOS-style theme
+    background: '#ffffff',
+    headerBg: '#ffffff',
+    headerBorder: '#e5e5ea',
+    textPrimary: '#000000',
+    textSecondary: '#3c3c43',
+    cardBg: '#f2f2f7',
     cardBorder: 'rgba(0, 0, 0, 0.1)',
     iconGradient: 'linear-gradient(135deg, #007aff 0%, #5856d6 100%)',
     iconColor: 'white',
@@ -316,13 +316,13 @@ export function ToolSection({ icon, title, description, children, defaultOpen = 
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   const theme = lightMode ? {
-    cardBg: '#ffffff',
+    cardBg: '#f2f2f7',
     cardBorder: 'rgba(0, 0, 0, 0.1)',
     cardHover: 'rgba(0, 0, 0, 0.03)',
     iconBg: 'rgba(0, 122, 255, 0.1)',
     iconColor: '#007aff',
-    textPrimary: '#1d1d1f',
-    textSecondary: '#6e6e73',
+    textPrimary: '#000000',
+    textSecondary: '#3c3c43',
   } : {
     cardBg: 'rgba(31, 41, 55, 0.5)',
     cardBorder: 'rgba(55, 65, 81, 0.5)',
