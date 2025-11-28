@@ -34,25 +34,26 @@ export default function DevToolsSections({
   setApprovalEnabled,
 
   // Other props
-  browserLang
+  browserLang,
+  lightMode = false
 }) {
-  // Panel dark theme styles
+  // Panel theme styles - adapts to light/dark mode
   const panelStyles = {
     label: {
       display: 'block',
       marginBottom: '6px',
       fontSize: '13px',
       fontWeight: '500',
-      color: '#d1d5db',
+      color: lightMode ? '#3c3c43' : '#d1d5db',
       fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined
     },
     input: {
       width: '100%',
       padding: '8px 12px',
-      border: '1px solid #374151',
+      border: lightMode ? '1px solid rgba(0, 0, 0, 0.15)' : '1px solid #374151',
       borderRadius: '6px',
-      background: '#1f2937',
-      color: '#f1f5f9',
+      background: lightMode ? '#ffffff' : '#1f2937',
+      color: lightMode ? '#000000' : '#f1f5f9',
       fontSize: '13px',
       fontFamily: browserLang === 'th' ? '"Noto Sans Thai", sans-serif' : undefined,
       boxSizing: 'border-box'
