@@ -1488,7 +1488,7 @@ export async function createMonthlySheet(env = 'dev', force = false, month = nul
                 title: targetSheetName,
                 gridProperties: {
                   rowCount: 1000,
-                  columnCount: 10
+                  columnCount: 11  // Updated from 10 to 11 to match NEW structure (A-K)
                 }
               }
             }

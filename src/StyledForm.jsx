@@ -1268,12 +1268,16 @@ function StyledForm() {
   // Function to handle adding new driver
   const handleAddDriver = async () => {
     if (!newDriver.name.trim()) {
-      alert(browserLang === 'th' ? 'กรุณากรอกชื่อ' : 'Please enter a name');
+      showAlert(
+        browserLang === 'th' ? 'กรุณากรอกชื่อ' : 'Please enter a name',
+        'error'
+      );
       return;
     }
 
     setIsAddingDriver(true);
-    
+    const driverNameToAdd = newDriver.name.trim();
+
     try {
       let photoId = null;
 
@@ -1298,12 +1302,12 @@ function StyledForm() {
           // Strapi returns array of uploaded files
           // Handle both array and single object responses
           const uploadedFile = Array.isArray(uploadResult) ? uploadResult[0] : uploadResult;
-          
+
           if (uploadedFile) {
             // Strapi v5 returns media with 'id' field
             photoId = uploadedFile.id || uploadedFile.data?.id || uploadedFile.data?.attributes?.id;
             console.log('Photo uploaded successfully, ID:', photoId);
-            
+
             if (!photoId) {
               console.warn('Photo uploaded but ID not found in response:', uploadedFile);
             }
@@ -1318,7 +1322,7 @@ function StyledForm() {
 
       // Create driver in Strapi with photo, name, and age
       const driverData = {
-        name: newDriver.name.trim(),
+        name: driverNameToAdd,
         age: newDriver.age ? parseInt(newDriver.age) : null,
         status: 'active'
       };
@@ -1350,7 +1354,7 @@ function StyledForm() {
           statusText: response.statusText,
           result: result
         });
-        
+
         // Better error messages for common issues
         let errorMessage = 'Failed to create driver';
         if (response.status === 403) {
@@ -1362,17 +1366,24 @@ function StyledForm() {
         } else {
           errorMessage = JSON.stringify(result) || `Server error: ${response.status} ${response.statusText}`;
         }
-        
+
         throw new Error(errorMessage);
       }
 
       console.log('Driver created successfully:', result);
 
-      // Refresh drivers list from Strapi to get the latest data
-      await fetchDrivers();
+      // Get the driver name from response
+      const driverName = result.data?.attributes?.name || result.data?.name || driverNameToAdd;
 
-      // Get the driver name for auto-selection
-      const driverName = result.data?.attributes?.name || result.data?.name || newDriver.name;
+      // OPTIMIZED: Add driver to list immediately instead of refetching all drivers
+      setDrivers(prevDrivers => {
+        // Check if driver already exists to avoid duplicates
+        if (prevDrivers.includes(driverName)) {
+          return prevDrivers;
+        }
+        // Add new driver and sort
+        return [...prevDrivers, driverName].sort();
+      });
 
       // Reset form and close modal
       setNewDriver({
@@ -1383,10 +1394,13 @@ function StyledForm() {
       });
       setShowAddDriverModal(false);
 
-      // Show success message
-      alert(browserLang === 'th' 
-        ? `เพิ่ม ${driverName} สำเร็จ` 
-        : `Successfully added ${driverName}`);
+      // Show success message with non-blocking modal
+      showAlert(
+        browserLang === 'th'
+          ? `เพิ่ม ${driverName} สำเร็จ`
+          : `Successfully added ${driverName}`,
+        'success'
+      );
 
       // Auto-select the newly added driver
       setFormData(prev => ({ ...prev, driverName }));
@@ -1394,9 +1408,12 @@ function StyledForm() {
 
     } catch (error) {
       console.error('Error adding driver:', error);
-      alert(browserLang === 'th' 
-        ? `เกิดข้อผิดพลาด: ${error.message}` 
-        : `Error: ${error.message}`);
+      showAlert(
+        browserLang === 'th'
+          ? `เกิดข้อผิดพลาด: ${error.message}`
+          : `Error: ${error.message}`,
+        'error'
+      );
     } finally {
       setIsAddingDriver(false);
     }
