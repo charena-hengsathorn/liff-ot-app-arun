@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Zap, Calculator, Calendar, FileSpreadsheet, Settings as SettingsIcon, ChevronDown, TestTube, Trash2, RotateCw, Play, StopCircle, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Zap, Calculator, Calendar, FileSpreadsheet, Settings as SettingsIcon, ChevronDown, TestTube, Trash2, RotateCw, Play, StopCircle, AlertCircle, CheckCircle, Sun, Moon } from 'lucide-react';
 
 /**
  * Sliding Dev Tools Panel
@@ -19,6 +19,35 @@ export default function DevToolsPanel({
   children,
   ...props
 }) {
+  const [lightMode, setLightMode] = useState(false);
+
+  // Creative color schemes
+  const theme = lightMode ? {
+    // ✨ Light mode - Dreamy gradient with soft pastels
+    background: 'linear-gradient(135deg, #fef3c7 0%, #fce7f3 50%, #ddd6fe 100%)',
+    headerBg: 'rgba(255, 255, 255, 0.95)',
+    headerBorder: '#f3e8ff',
+    textPrimary: '#1f2937',
+    textSecondary: '#6b7280',
+    cardBg: 'rgba(255, 255, 255, 0.7)',
+    cardBorder: 'rgba(147, 51, 234, 0.2)',
+    iconGradient: 'linear-gradient(135deg, #f59e0b 0%, #ec4899 50%, #8b5cf6 100%)',
+    iconColor: 'white',
+    shadowColor: 'rgba(147, 51, 234, 0.15)',
+  } : {
+    // 🌙 Dark mode - Original cyberpunk style
+    background: 'linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%)',
+    headerBg: 'rgba(17, 24, 39, 0.95)',
+    headerBorder: '#374151',
+    textPrimary: 'white',
+    textSecondary: '#9ca3af',
+    cardBg: 'rgba(31, 41, 55, 0.5)',
+    cardBorder: 'rgba(55, 65, 81, 0.5)',
+    iconGradient: 'linear-gradient(135deg, #9333ea 0%, #3b82f6 100%)',
+    iconColor: 'white',
+    shadowColor: 'rgba(147, 51, 234, 0.2)',
+  };
+
   return (
     <>
       {/* Backdrop */}
@@ -46,7 +75,7 @@ export default function DevToolsPanel({
           zIndex: 999,
           overflowY: 'auto',
           overflowX: 'hidden',
-          background: 'linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%)',
+          background: theme.background,
 
           // Desktop: Genie effect from gear icon (floating panel)
           ...(window.innerWidth >= 768 ? {
@@ -85,10 +114,10 @@ export default function DevToolsPanel({
             position: 'sticky',
             top: 0,
             zIndex: 10,
-            background: 'rgba(17, 24, 39, 0.95)',
+            background: theme.headerBg,
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            borderBottom: '1px solid #374151',
+            borderBottom: `1px solid ${theme.headerBorder}`,
           }}
         >
           <div
@@ -105,24 +134,54 @@ export default function DevToolsPanel({
                   width: '40px',
                   height: '40px',
                   borderRadius: '8px',
-                  background: 'linear-gradient(135deg, #9333ea 0%, #3b82f6 100%)',
+                  background: theme.iconGradient,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  boxShadow: `0 4px 12px ${theme.shadowColor}`,
                 }}
               >
-                <Zap size={20} color="white" />
+                <Zap size={20} color={theme.iconColor} />
               </div>
               <div>
-                <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: 'white', margin: 0 }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: theme.textPrimary, margin: 0 }}>
                   Dev Tools
                 </h2>
-                <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>
+                <p style={{ fontSize: '12px', color: theme.textSecondary, margin: 0 }}>
                   Development & Testing
                 </p>
               </div>
             </div>
-            <button
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {/* Light/Dark Mode Toggle */}
+              <button
+                onClick={() => setLightMode(!lightMode)}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: lightMode ? 'rgba(251, 191, 36, 0.2)' : 'rgba(147, 51, 234, 0.2)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.3s',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = lightMode ? 'rgba(251, 191, 36, 0.3)' : 'rgba(147, 51, 234, 0.3)';
+                  e.currentTarget.style.transform = 'scale(1.1) rotate(10deg)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = lightMode ? 'rgba(251, 191, 36, 0.2)' : 'rgba(147, 51, 234, 0.2)';
+                  e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+                }}
+                aria-label={lightMode ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              >
+                {lightMode ? <Moon size={16} color="#f59e0b" /> : <Sun size={16} color="#a78bfa" />}
+              </button>
+              {/* Close Button */}
+              <button
               onClick={onClose}
               style={{
                 width: '32px',
@@ -137,15 +196,16 @@ export default function DevToolsPanel({
                 transition: 'background 0.2s',
               }}
               onMouseOver={(e) => {
-                e.currentTarget.style.background = '#1f2937';
+                e.currentTarget.style.background = lightMode ? 'rgba(0, 0, 0, 0.05)' : '#1f2937';
               }}
               onMouseOut={(e) => {
                 e.currentTarget.style.background = 'transparent';
               }}
               aria-label="Close Dev Tools"
             >
-              <X size={20} color="#9ca3af" />
+              <X size={20} color={theme.textSecondary} />
             </button>
+            </div>
           </div>
         </div>
 
@@ -156,6 +216,7 @@ export default function DevToolsPanel({
             icon={<SettingsIcon size={20} />}
             title="Environment"
             description="Switch between dev and production"
+            lightMode={lightMode}
           >
             <div style={{ display: 'flex', gap: '8px' }}>
               <EnvironmentButton
@@ -190,14 +251,18 @@ export default function DevToolsPanel({
                 }}
               />
               Currently using:{' '}
-              <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'white' }}>
+              <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: theme.textPrimary }}>
                 {env}
               </span>
             </div>
           </ToolSection>
 
           {/* Children content (all dev tools sections will be passed here) */}
-          {children}
+          {React.Children.map(children, child =>
+            React.isValidElement(child)
+              ? React.cloneElement(child, { lightMode })
+              : child
+          )}
         </div>
 
         {/* Footer */}
@@ -205,20 +270,21 @@ export default function DevToolsPanel({
           style={{
             position: 'sticky',
             bottom: 0,
-            background: 'rgba(17, 24, 39, 0.95)',
+            background: theme.headerBg,
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            borderTop: '1px solid #374151',
+            borderTop: `1px solid ${theme.headerBorder}`,
             padding: '16px',
           }}
         >
-          <div style={{ textAlign: 'center', fontSize: '12px', color: '#6b7280' }}>
+          <div style={{ textAlign: 'center', fontSize: '12px', color: theme.textSecondary }}>
             DevAdmin Mode • Press <kbd style={{
               padding: '2px 6px',
-              background: '#374151',
+              background: lightMode ? 'rgba(0, 0, 0, 0.1)' : '#374151',
               borderRadius: '4px',
               fontFamily: 'monospace',
-              fontSize: '11px'
+              fontSize: '11px',
+              color: theme.textPrimary
             }}>Esc</kbd> to close
           </div>
         </div>
@@ -231,19 +297,38 @@ export default function DevToolsPanel({
  * Reusable Tool Section Component
  * Provides consistent styling for each dev tool section
  */
-export function ToolSection({ icon, title, description, children, defaultOpen = true }) {
+export function ToolSection({ icon, title, description, children, defaultOpen = true, lightMode = false }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  const theme = lightMode ? {
+    cardBg: 'rgba(255, 255, 255, 0.7)',
+    cardBorder: 'rgba(147, 51, 234, 0.2)',
+    cardHover: 'rgba(147, 51, 234, 0.1)',
+    iconBg: 'rgba(147, 51, 234, 0.1)',
+    iconColor: '#8b5cf6',
+    textPrimary: '#1f2937',
+    textSecondary: '#6b7280',
+  } : {
+    cardBg: 'rgba(31, 41, 55, 0.5)',
+    cardBorder: 'rgba(55, 65, 81, 0.5)',
+    cardHover: 'rgba(55, 65, 81, 0.3)',
+    iconBg: 'rgba(55, 65, 81, 0.5)',
+    iconColor: '#a78bfa',
+    textPrimary: 'white',
+    textSecondary: '#9ca3af',
+  };
 
   return (
     <div
       style={{
-        background: 'rgba(31, 41, 55, 0.5)',
+        background: theme.cardBg,
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         borderRadius: '12px',
-        border: '1px solid rgba(55, 65, 81, 0.5)',
+        border: `1px solid ${theme.cardBorder}`,
         overflow: 'hidden',
         marginTop: '16px',
+        boxShadow: lightMode ? '0 4px 12px rgba(147, 51, 234, 0.08)' : 'none',
       }}
     >
       <button
@@ -260,7 +345,7 @@ export function ToolSection({ icon, title, description, children, defaultOpen = 
           transition: 'background 0.2s',
         }}
         onMouseOver={(e) => {
-          e.currentTarget.style.background = 'rgba(55, 65, 81, 0.3)';
+          e.currentTarget.style.background = theme.cardHover;
         }}
         onMouseOut={(e) => {
           e.currentTarget.style.background = 'transparent';
@@ -272,28 +357,28 @@ export function ToolSection({ icon, title, description, children, defaultOpen = 
               width: '40px',
               height: '40px',
               borderRadius: '8px',
-              background: 'rgba(55, 65, 81, 0.5)',
+              background: theme.iconBg,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#a78bfa',
+              color: theme.iconColor,
               flexShrink: 0,
             }}
           >
             {icon}
           </div>
           <div style={{ textAlign: 'left', flex: 1 }}>
-            <h3 style={{ fontWeight: '600', color: 'white', margin: 0, fontSize: '16px' }}>
+            <h3 style={{ fontWeight: '600', color: theme.textPrimary, margin: 0, fontSize: '16px' }}>
               {title}
             </h3>
-            <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0 0' }}>
+            <p style={{ fontSize: '12px', color: theme.textSecondary, margin: '4px 0 0 0' }}>
               {description}
             </p>
           </div>
         </div>
         <ChevronDown
           size={20}
-          color="#9ca3af"
+          color={theme.textSecondary}
           style={{
             transition: 'transform 0.2s',
             transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',

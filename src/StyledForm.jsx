@@ -2879,7 +2879,7 @@ function StyledForm() {
               boxShadow: '2px 0 8px rgba(0,0,0,0.15)',
               transform: isMobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
               transition: 'transform 0.3s ease',
-              zIndex: 1101,
+              zIndex: 997, // ✅ Below DevTools panel (999)
               display: 'flex',
               flexDirection: 'column',
               overflowY: 'auto'
