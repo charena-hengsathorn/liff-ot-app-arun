@@ -1,1 +1,1 @@
-web: npm run start:express
+web: cd strapi && npm start
