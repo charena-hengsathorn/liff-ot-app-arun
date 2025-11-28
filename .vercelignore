@@ -2,7 +2,7 @@
 server/
 server.mjs
 strapi/
-utils/
+/utils/
 
 # Backend-only scripts
 *.mjs
