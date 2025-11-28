@@ -1189,14 +1189,29 @@ export async function checkAndGetRowByDriverAndDate(driverName, thaiDate, env = 
       success: true,
       exists: false,
       row: null,
-      error: 'Row not found'
+      error: 'Row not found',
+      targetSheetName: sheetName,  // ✅ Include sheet name
+      hasNewStructure              // ✅ Include structure detection result
     };
   } catch (error) {
     console.error('Error checking and getting row by driver and date:', error);
+
+    // Try to get basic info even on error
+    const spreadsheetId = getSpreadsheetId(env);
+    const sheetName = targetSheetName || getSheetNameFromDate(thaiDate);
+    let hasNewStructure = false;
+    try {
+      hasNewStructure = await detectSheetStructure(spreadsheetId, sheetName);
+    } catch (detectError) {
+      console.error('Error detecting structure on error path:', detectError.message);
+    }
+
     return {
       success: false,
       exists: false,
-      error: error.message
+      error: error.message,
+      targetSheetName: sheetName,  // ✅ Include sheet name
+      hasNewStructure              // ✅ Include structure detection result
     };
   }
 }
