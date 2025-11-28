@@ -23,17 +23,17 @@ export default function DevToolsPanel({
 
   // Creative color schemes
   const theme = lightMode ? {
-    // ✨ Light mode - Vibrant blue/cyan flight theme
-    background: 'linear-gradient(135deg, #38bdf8 0%, #0ea5e9 50%, #0284c7 100%)',
-    headerBg: 'rgba(255, 255, 255, 0.98)',
-    headerBorder: '#e0f2fe',
-    textPrimary: '#0c4a6e',
-    textSecondary: '#0369a1',
-    cardBg: 'rgba(255, 255, 255, 0.9)',
-    cardBorder: 'rgba(14, 165, 233, 0.3)',
-    iconGradient: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
+    // ✨ Light mode - Soft iOS-style theme
+    background: 'linear-gradient(135deg, #f5f5f7 0%, #e5e5ea 100%)',
+    headerBg: 'rgba(255, 255, 255, 0.95)',
+    headerBorder: '#d1d1d6',
+    textPrimary: '#1d1d1f',
+    textSecondary: '#6e6e73',
+    cardBg: '#ffffff',
+    cardBorder: 'rgba(0, 0, 0, 0.1)',
+    iconGradient: 'linear-gradient(135deg, #007aff 0%, #5856d6 100%)',
     iconColor: 'white',
-    shadowColor: 'rgba(14, 165, 233, 0.2)',
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
   } : {
     // 🌙 Dark mode - Original cyberpunk style
     background: 'linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%)',
@@ -88,7 +88,9 @@ export default function DevToolsPanel({
             transform: isOpen ? 'scale(1)' : 'scale(0)',
             opacity: isOpen ? 1 : 0,
             boxShadow: isOpen
-              ? '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px rgba(147, 51, 234, 0.2)'
+              ? (lightMode
+                  ? '0 10px 40px -5px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.1)'
+                  : '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px rgba(147, 51, 234, 0.2)')
               : 'none',
             transition: isOpen
               ? 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)' // Genie pop-in with bounce
@@ -165,7 +167,7 @@ export default function DevToolsPanel({
                     height: '32px',
                     borderRadius: '16px',
                     border: 'none',
-                    background: lightMode ? '#0ea5e9' : '#374151',
+                    background: lightMode ? '#007aff' : '#374151',
                     cursor: 'pointer',
                     position: 'relative',
                     transition: 'background 0.3s ease',
@@ -189,7 +191,7 @@ export default function DevToolsPanel({
                       justifyContent: 'center',
                     }}
                   >
-                    {lightMode ? <Sun size={14} color="#0ea5e9" /> : <Moon size={14} color="#374151" />}
+                    {lightMode ? <Sun size={14} color="#007aff" /> : <Moon size={14} color="#374151" />}
                   </div>
                 </button>
               </div>
@@ -314,13 +316,13 @@ export function ToolSection({ icon, title, description, children, defaultOpen = 
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   const theme = lightMode ? {
-    cardBg: 'rgba(255, 255, 255, 0.9)',
-    cardBorder: 'rgba(14, 165, 233, 0.3)',
-    cardHover: 'rgba(14, 165, 233, 0.1)',
-    iconBg: 'rgba(14, 165, 233, 0.15)',
-    iconColor: '#0ea5e9',
-    textPrimary: '#0c4a6e',
-    textSecondary: '#0369a1',
+    cardBg: '#ffffff',
+    cardBorder: 'rgba(0, 0, 0, 0.1)',
+    cardHover: 'rgba(0, 0, 0, 0.03)',
+    iconBg: 'rgba(0, 122, 255, 0.1)',
+    iconColor: '#007aff',
+    textPrimary: '#1d1d1f',
+    textSecondary: '#6e6e73',
   } : {
     cardBg: 'rgba(31, 41, 55, 0.5)',
     cardBorder: 'rgba(55, 65, 81, 0.5)',
@@ -341,7 +343,7 @@ export function ToolSection({ icon, title, description, children, defaultOpen = 
         border: `1px solid ${theme.cardBorder}`,
         overflow: 'hidden',
         marginTop: '16px',
-        boxShadow: lightMode ? '0 4px 12px rgba(14, 165, 233, 0.12)' : 'none',
+        boxShadow: lightMode ? '0 1px 3px rgba(0, 0, 0, 0.08)' : 'none',
       }}
     >
       <button
