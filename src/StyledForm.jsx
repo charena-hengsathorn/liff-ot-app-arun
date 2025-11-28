@@ -2993,7 +2993,7 @@ function StyledForm() {
             position: 'fixed',
             top: '20px',
             left: '20px',
-            zIndex: 1001,
+            zIndex: 996, // ✅ Below DevTools panel (999)
             padding: '10px 20px',
             fontSize: '15px',
             borderRadius: '8px',
@@ -3029,7 +3029,7 @@ function StyledForm() {
             position: 'fixed',
             top: '20px',
             right: '20px',
-            zIndex: 1001,
+            zIndex: 996, // ✅ Below DevTools panel (999)
             padding: '10px 16px',
             fontSize: '16px',
             borderRadius: '17px',
