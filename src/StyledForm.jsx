@@ -1152,9 +1152,13 @@ function StyledForm() {
            };
            
           setFormData(updatedFormData);
-          
+
           // Set day of week from existing data (already translated by server) or calculate and translate from date
-          const dayOfWeekValue = dayOfWeek || translateDayOfWeek(getDayOfWeekFromThaiDate(date), browserLang);
+          // ✅ Fix: Detect if dayOfWeek is actually a time (HH:MM format) and recalculate from date
+          const isTimeFormat = dayOfWeek && /^\d{1,2}:\d{2}$/.test(dayOfWeek);
+          const dayOfWeekValue = (dayOfWeek && !isTimeFormat)
+            ? dayOfWeek
+            : translateDayOfWeek(getDayOfWeekFromThaiDate(date), browserLang);
           setDayOfWeek(dayOfWeekValue);
           
           // Store original data for change tracking
