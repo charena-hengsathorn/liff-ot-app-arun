@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.mjs",
-    "postinstall": "cd strapi && npm install --production",
+    "postinstall": "if [ -z \"$VERCEL\" ]; then cd strapi && npm install --production; fi",
     "vercel-build": "vite build",
     "start:all": "concurrently \"npm run start:strapi\" \"npm run start:express\"",
     "start:express": "node server.mjs",
