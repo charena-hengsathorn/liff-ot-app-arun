@@ -23,17 +23,17 @@ export default function DevToolsPanel({
 
   // Creative color schemes
   const theme = lightMode ? {
-    // ✨ Light mode - Dreamy gradient with soft pastels
-    background: 'linear-gradient(135deg, #fef3c7 0%, #fce7f3 50%, #ddd6fe 100%)',
-    headerBg: 'rgba(255, 255, 255, 0.95)',
-    headerBorder: '#f3e8ff',
-    textPrimary: '#1f2937',
-    textSecondary: '#6b7280',
-    cardBg: 'rgba(255, 255, 255, 0.7)',
-    cardBorder: 'rgba(147, 51, 234, 0.2)',
-    iconGradient: 'linear-gradient(135deg, #f59e0b 0%, #ec4899 50%, #8b5cf6 100%)',
+    // ✨ Light mode - Vibrant blue/cyan flight theme
+    background: 'linear-gradient(135deg, #38bdf8 0%, #0ea5e9 50%, #0284c7 100%)',
+    headerBg: 'rgba(255, 255, 255, 0.98)',
+    headerBorder: '#e0f2fe',
+    textPrimary: '#0c4a6e',
+    textSecondary: '#0369a1',
+    cardBg: 'rgba(255, 255, 255, 0.9)',
+    cardBorder: 'rgba(14, 165, 233, 0.3)',
+    iconGradient: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
     iconColor: 'white',
-    shadowColor: 'rgba(147, 51, 234, 0.15)',
+    shadowColor: 'rgba(14, 165, 233, 0.2)',
   } : {
     // 🌙 Dark mode - Original cyberpunk style
     background: 'linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%)',
@@ -153,33 +153,46 @@ export default function DevToolsPanel({
               </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              {/* Light/Dark Mode Toggle */}
-              <button
-                onClick={() => setLightMode(!lightMode)}
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: lightMode ? 'rgba(251, 191, 36, 0.2)' : 'rgba(147, 51, 234, 0.2)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.3s',
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = lightMode ? 'rgba(251, 191, 36, 0.3)' : 'rgba(147, 51, 234, 0.3)';
-                  e.currentTarget.style.transform = 'scale(1.1) rotate(10deg)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = lightMode ? 'rgba(251, 191, 36, 0.2)' : 'rgba(147, 51, 234, 0.2)';
-                  e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
-                }}
-                aria-label={lightMode ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-              >
-                {lightMode ? <Moon size={16} color="#f59e0b" /> : <Sun size={16} color="#a78bfa" />}
-              </button>
+              {/* iOS-Style Light/Dark Mode Toggle */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                <div style={{ fontSize: '10px', color: theme.textSecondary, fontWeight: '500' }}>
+                  {lightMode ? 'Light Mode' : 'Dark Mode'}
+                </div>
+                <button
+                  onClick={() => setLightMode(!lightMode)}
+                  style={{
+                    width: '60px',
+                    height: '32px',
+                    borderRadius: '16px',
+                    border: 'none',
+                    background: lightMode ? '#0ea5e9' : '#374151',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    transition: 'background 0.3s ease',
+                    padding: '4px',
+                  }}
+                  aria-label={lightMode ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                >
+                  <div
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      background: 'white',
+                      position: 'absolute',
+                      top: '4px',
+                      left: lightMode ? '32px' : '4px',
+                      transition: 'left 0.3s ease',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {lightMode ? <Sun size={14} color="#0ea5e9" /> : <Moon size={14} color="#374151" />}
+                  </div>
+                </button>
+              </div>
               {/* Close Button */}
               <button
               onClick={onClose}
@@ -301,13 +314,13 @@ export function ToolSection({ icon, title, description, children, defaultOpen = 
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   const theme = lightMode ? {
-    cardBg: 'rgba(255, 255, 255, 0.7)',
-    cardBorder: 'rgba(147, 51, 234, 0.2)',
-    cardHover: 'rgba(147, 51, 234, 0.1)',
-    iconBg: 'rgba(147, 51, 234, 0.1)',
-    iconColor: '#8b5cf6',
-    textPrimary: '#1f2937',
-    textSecondary: '#6b7280',
+    cardBg: 'rgba(255, 255, 255, 0.9)',
+    cardBorder: 'rgba(14, 165, 233, 0.3)',
+    cardHover: 'rgba(14, 165, 233, 0.1)',
+    iconBg: 'rgba(14, 165, 233, 0.15)',
+    iconColor: '#0ea5e9',
+    textPrimary: '#0c4a6e',
+    textSecondary: '#0369a1',
   } : {
     cardBg: 'rgba(31, 41, 55, 0.5)',
     cardBorder: 'rgba(55, 65, 81, 0.5)',
@@ -328,7 +341,7 @@ export function ToolSection({ icon, title, description, children, defaultOpen = 
         border: `1px solid ${theme.cardBorder}`,
         overflow: 'hidden',
         marginTop: '16px',
-        boxShadow: lightMode ? '0 4px 12px rgba(147, 51, 234, 0.08)' : 'none',
+        boxShadow: lightMode ? '0 4px 12px rgba(14, 165, 233, 0.12)' : 'none',
       }}
     >
       <button
