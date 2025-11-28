@@ -759,7 +759,12 @@ export async function approveMostRecent(env = 'prod', thaiDate = null) {
     // Otherwise, we need to search across all sheets (this is a limitation)
     if (thaiDate) {
       const targetSheetName = getSheetNameFromDate(thaiDate);
-      const range = formatSheetRange(targetSheetName, 'A:K');
+
+      // Detect sheet structure first
+      const hasNewStructure = await detectSheetStructure(spreadsheetId, targetSheetName);
+      const range = formatSheetRange(targetSheetName, hasNewStructure ? 'A:K' : 'A:J');
+      const approvalColumnIndex = hasNewStructure ? 10 : 9; // column K (index 10) for new, column J (index 9) for old
+      const approvalColumn = hasNewStructure ? 'K' : 'J';
 
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -770,10 +775,10 @@ export async function approveMostRecent(env = 'prod', thaiDate = null) {
 
       // Find most recent unapproved request
       for (let i = values.length - 1; i > 0; i--) { // start from last row, skip header
-        if (!values[i][9]) { // column J (index 9) is empty for approval
+        if (!values[i][approvalColumnIndex]) { // Check correct approval column based on structure
           await sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: formatSheetRange(targetSheetName, `J${i + 1}`),
+            range: formatSheetRange(targetSheetName, `${approvalColumn}${i + 1}`),
             valueInputOption: 'RAW',
             requestBody: {
               values: [['Approve']]
@@ -784,7 +789,8 @@ export async function approveMostRecent(env = 'prod', thaiDate = null) {
             success: true,
             message: 'Most recent approval updated',
             row: i + 1,
-            targetSheetName
+            targetSheetName,
+            hasNewStructure
           };
         }
       }
@@ -799,12 +805,17 @@ export async function approveMostRecent(env = 'prod', thaiDate = null) {
 
       const values = response.data.values || [];
 
-      // Find most recent unapproved request
+      // Find most recent unapproved request (check both structures)
       for (let i = values.length - 1; i > 0; i--) { // start from last row, skip header
-        if (!values[i][9]) { // column J (index 9) is empty for approval
+        // Detect structure: if column I (index 8) looks like a timestamp, it's NEW structure
+        const hasNewStructure = values[i][8] && values[i][8].includes('/') && values[i][8].includes(':');
+        const approvalColumnIndex = hasNewStructure ? 10 : 9; // column K (index 10) for new, column J (index 9) for old
+        const approvalColumn = hasNewStructure ? 'K' : 'J';
+
+        if (!values[i][approvalColumnIndex]) { // Check correct approval column based on structure
           await sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: `J${i + 1}`,
+            range: `${approvalColumn}${i + 1}`,
             valueInputOption: 'RAW',
             requestBody: {
               values: [['Approve']]
@@ -814,7 +825,8 @@ export async function approveMostRecent(env = 'prod', thaiDate = null) {
           return {
             success: true,
             message: 'Most recent approval updated (legacy mode)',
-            row: i + 1
+            row: i + 1,
+            hasNewStructure
           };
         }
       }
@@ -1595,14 +1607,14 @@ export async function createMonthlySheet(env = 'dev', force = false, month = nul
                     startRowIndex: 0,
                     endRowIndex: 2,
                     startColumnIndex: 0,
-                    endColumnIndex: 10
+                    endColumnIndex: 11  // Fixed: Changed from 10 to 11 to match NEW structure (A-K = 11 columns)
                   },
                   destination: {
                     sheetId: newSheetId,
                     startRowIndex: 0,
                     endRowIndex: 2,
                     startColumnIndex: 0,
-                    endColumnIndex: 10
+                    endColumnIndex: 11  // Fixed: Changed from 10 to 11 to match NEW structure (A-K = 11 columns)
                   },
                   pasteType: 'PASTE_FORMAT',
                   pasteOrientation: 'NORMAL'
@@ -1618,15 +1630,17 @@ export async function createMonthlySheet(env = 'dev', force = false, month = nul
     }
 
     // Add test driver data in second row
+    const testDate = bangkokTime.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' });
     const testData = [
-      'Test Driver',
-      bangkokTime.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' }),
-      '08:00',
-      '17:00',
-      '',
-      '',
-      'Monthly sheet creation test entry',
-      bangkokTime.toLocaleString('en-US', {
+      'Test Driver',                  // Column A: Driver Name
+      testDate,                       // Column B: Date
+      translateDayOfWeek(getDayOfWeek(testDate), 'en'),  // Column C: Day of Week (FIXED: Added missing column)
+      '08:00',                        // Column D: Clock In
+      '17:00',                        // Column E: Clock Out
+      '',                             // Column F: OT Start
+      '',                             // Column G: OT End
+      'Monthly sheet creation test entry',  // Column H: Comments
+      bangkokTime.toLocaleString('en-US', { // Column I: Submitted At
         timeZone: 'Asia/Bangkok',
         year: 'numeric',
         month: '2-digit',
@@ -1636,13 +1650,13 @@ export async function createMonthlySheet(env = 'dev', force = false, month = nul
         second: '2-digit',
         hour12: false
       }),
-      '',
-      'AUTO'
+      '',                             // Column J: OT Hours
+      'AUTO'                          // Column K: Approval
     ];
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: formatSheetRange(targetSheetName, 'A2:J2'),
+      range: formatSheetRange(targetSheetName, 'A2:K2'),  // Fixed: Changed from A2:J2 to A2:K2 for NEW structure (11 columns)
       valueInputOption: 'RAW',
       resource: {
         values: [testData]
