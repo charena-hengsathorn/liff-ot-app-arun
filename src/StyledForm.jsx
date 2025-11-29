@@ -993,10 +993,23 @@ function StyledForm() {
             });
           }
         } else {
-          console.error(`❌ Error setting ${type === 'clockIn' ? 'Clock In' : 'Clock Out'} time: ${createResult.error}`);
+          console.error(`❌ Error setting ${type === 'clockIn' ? 'Clock In' : 'Clock Out'} time:`, createResult.error);
           // Reset isSubmitting flag on error so user can retry
           setIsSubmitting(false);
-          showAlert(`Failed to set ${type === 'clockIn' ? 'Clock In' : 'Clock Out'} time. Please try again.`, 'error');
+
+          // Provide more helpful error message
+          const errorMsg = createResult.error?.toLowerCase() || '';
+          let userMessage = `Failed to set ${type === 'clockIn' ? 'Clock In' : 'Clock Out'} time. `;
+
+          if (errorMsg.includes('permission')) {
+            userMessage += 'Please wait a moment and try again. If the problem persists, contact support.';
+          } else if (errorMsg.includes('rate limit') || errorMsg.includes('quota')) {
+            userMessage += 'Too many requests. Please wait a moment and try again.';
+          } else {
+            userMessage += 'Please try again.';
+          }
+
+          showAlert(userMessage, 'error');
           return;
         }
       }
@@ -1004,7 +1017,22 @@ function StyledForm() {
       console.error('Error checking/updating Google Sheets:', error);
       // Reset isSubmitting flag on any error so user can retry
       setIsSubmitting(false);
-      showAlert('Network error occurred. Please try again.', 'error');
+
+      // Provide more helpful error message based on error type
+      const errorMsg = error.message?.toLowerCase() || '';
+      let userMessage = 'An error occurred. ';
+
+      if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+        userMessage += 'Network error. Please check your connection and try again.';
+      } else if (errorMsg.includes('permission')) {
+        userMessage += 'Permission error. Please wait a moment and try again.';
+      } else if (errorMsg.includes('timeout')) {
+        userMessage += 'Request timed out. Please try again.';
+      } else {
+        userMessage += 'Please try again.';
+      }
+
+      showAlert(userMessage, 'error');
     } finally {
       clearTimeout(timeoutId); // Clear the timeout
       setIsSubmitting(false);

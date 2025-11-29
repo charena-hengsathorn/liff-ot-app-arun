@@ -23,9 +23,69 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: 'v4', auth });
 
+// In-memory lock for preventing concurrent writes to same driver+date
+const pendingOperations = new Map();
+
 // Spreadsheet IDs from environment
 const SPREADSHEET_ID_DEV = process.env.VITE_GOOGLE_SHEET_ID_DEV;
 const SPREADSHEET_ID_PROD = process.env.VITE_GOOGLE_SHEET_ID_PROD;
+
+// Startup validation for Google Sheets access
+async function validateGoogleSheetsAccess() {
+  console.log('🔍 Validating Google Sheets access...');
+
+  const validationResults = {
+    dev: { success: false, error: null },
+    prod: { success: false, error: null }
+  };
+
+  // Validate DEV sheet access
+  if (SPREADSHEET_ID_DEV) {
+    try {
+      await executeWithRetry(async () => {
+        const response = await sheets.spreadsheets.get({
+          spreadsheetId: SPREADSHEET_ID_DEV
+        });
+        return response;
+      }, 2, { operation: 'validation', env: 'dev' });
+
+      validationResults.dev.success = true;
+      console.log('✅ Google Sheets DEV access validated');
+    } catch (error) {
+      validationResults.dev.error = error.message;
+      console.error('❌ Google Sheets DEV access validation failed:', error.message);
+    }
+  } else {
+    console.warn('⚠️ DEV spreadsheet ID not configured');
+  }
+
+  // Validate PROD sheet access
+  if (SPREADSHEET_ID_PROD) {
+    try {
+      await executeWithRetry(async () => {
+        const response = await sheets.spreadsheets.get({
+          spreadsheetId: SPREADSHEET_ID_PROD
+        });
+        return response;
+      }, 2, { operation: 'validation', env: 'prod' });
+
+      validationResults.prod.success = true;
+      console.log('✅ Google Sheets PROD access validated');
+    } catch (error) {
+      validationResults.prod.error = error.message;
+      console.error('❌ Google Sheets PROD access validation failed:', error.message);
+    }
+  } else {
+    console.warn('⚠️ PROD spreadsheet ID not configured');
+  }
+
+  return validationResults;
+}
+
+// Auto-validate on module load (non-blocking)
+validateGoogleSheetsAccess().catch(err => {
+  console.error('❌ Google Sheets validation encountered an error:', err);
+});
 
 // Helper function to get spreadsheet ID by environment
 function getSpreadsheetId(env) {
@@ -63,6 +123,90 @@ function _FORMAT_BANGKOK_DATE(date) {
 // Helper function to format sheet range with proper quoting
 function formatSheetRange(targetSheetName, range) {
   return `'${targetSheetName}'!${range}`;
+}
+
+// Helper function to execute operation with retry logic for auth failures
+async function executeWithRetry(operation, maxRetries = 3, context = {}) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      const isAuthError = error.code === 401 || error.code === 403 ||
+                         error.message?.includes('permission') ||
+                         error.message?.includes('credentials');
+
+      if (isAuthError && attempt < maxRetries - 1) {
+        console.log(`⚠️ Auth error detected (attempt ${attempt + 1}/${maxRetries}):`, {
+          code: error.code,
+          message: error.message,
+          context
+        });
+
+        // Force token refresh by getting a new client
+        try {
+          await auth.getClient();
+          console.log('✅ Auth token refreshed, retrying...');
+        } catch (refreshError) {
+          console.error('❌ Failed to refresh auth token:', refreshError.message);
+        }
+
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // Not an auth error or max retries reached
+      throw error;
+    }
+  }
+}
+
+// Helper function to execute operation with exponential backoff for rate limiting
+async function executeWithBackoff(operation, maxRetries = 3, context = {}) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      const isRateLimitError = error.code === 429 ||
+                              error.message?.includes('rate limit') ||
+                              error.message?.includes('quota exceeded');
+
+      if (isRateLimitError && attempt < maxRetries - 1) {
+        const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        console.log(`⚠️ Rate limit detected, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`, context);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      throw error;
+    }
+  }
+}
+
+// Helper function to acquire lock for concurrent request protection
+async function withLock(key, operation, timeout = 10000) {
+  const startTime = Date.now();
+
+  // Wait for lock to be available
+  while (pendingOperations.has(key)) {
+    if (Date.now() - startTime > timeout) {
+      throw new Error(`Lock timeout exceeded for key: ${key}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // Acquire lock
+  pendingOperations.set(key, true);
+  console.log(`🔒 Lock acquired: ${key}`);
+
+  try {
+    return await operation();
+  } finally {
+    // Release lock
+    pendingOperations.delete(key);
+    console.log(`🔓 Lock released: ${key}`);
+  }
 }
 
 // Helper function to get day of week from Thai date
@@ -490,19 +634,23 @@ export async function submitWithClockTimes(data) {
 
 // Handle clock events (for backward compatibility)
 export async function handleClockEvent(data) {
-  try {
-    const {
-      driverName,
-      thaiDate,
-      type,
-      timestamp,
-      comments = '',
-      env = 'prod',
-      language = 'en'
-    } = data;
+  const {
+    driverName,
+    thaiDate,
+    type,
+    timestamp,
+    comments = '',
+    env = 'prod',
+    language = 'en'
+  } = data;
 
-    const spreadsheetId = getSpreadsheetId(env);
-    const submittedAt = getBangkokTime();
+  // Create lock key to prevent concurrent requests for same driver+date
+  const lockKey = `${driverName}-${thaiDate}-${env}`;
+
+  return await withLock(lockKey, async () => {
+    try {
+      const spreadsheetId = getSpreadsheetId(env);
+      const submittedAt = getBangkokTime();
 
     // Initialize OT variables at function level
     let otStart = '';
@@ -636,16 +784,27 @@ export async function handleClockEvent(data) {
       if (updates.length > 0) {
         console.log(`📝 Batch updating ${updates.length} cells`);
         try {
-          await sheets.spreadsheets.values.batchUpdate({
-            spreadsheetId,
-            requestBody: {
-              valueInputOption: 'RAW',
-              data: updates
-            }
-          });
+          await executeWithRetry(async () => {
+            return await executeWithBackoff(async () => {
+              return await sheets.spreadsheets.values.batchUpdate({
+                spreadsheetId,
+                requestBody: {
+                  valueInputOption: 'RAW',
+                  data: updates
+                }
+              });
+            }, 3, { operation: 'batchUpdate', driver: driverName, date: thaiDate });
+          }, 3, { operation: 'batchUpdate', driver: driverName, date: thaiDate });
           console.log(`✅ Batch update completed successfully`);
         } catch (error) {
-          console.error(`❌ Error in batch update:`, error);
+          console.error(`❌ Error in batch update:`, {
+            error: error.message,
+            code: error.code,
+            driver: driverName,
+            date: thaiDate,
+            type,
+            stack: error.stack
+          });
           throw error;
         }
       }
@@ -725,17 +884,70 @@ export async function handleClockEvent(data) {
 
       console.log(`📝 New row data:`, newRow);
 
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: formatSheetRange(targetSheetName, hasNewStructure ? 'A:K' : 'A:J'),
-        valueInputOption: 'RAW',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: {
-          values: [newRow]
-        }
-      });
+      try {
+        await executeWithRetry(async () => {
+          return await executeWithBackoff(async () => {
+            return await sheets.spreadsheets.values.append({
+              spreadsheetId,
+              range: formatSheetRange(targetSheetName, hasNewStructure ? 'A:K' : 'A:J'),
+              valueInputOption: 'RAW',
+              insertDataOption: 'INSERT_ROWS',
+              requestBody: {
+                values: [newRow]
+              }
+            });
+          }, 3, { operation: 'append', driver: driverName, date: thaiDate });
+        }, 3, { operation: 'append', driver: driverName, date: thaiDate });
 
-      console.log(`✅ New row created with OT hours: ${otHours || 'none'}`);
+        console.log(`✅ New row created with OT hours: ${otHours || 'none'}`);
+      } catch (appendError) {
+        console.error(`❌ Error appending new row:`, {
+          error: appendError.message,
+          code: appendError.code,
+          driver: driverName,
+          date: thaiDate,
+          type,
+          timestamp,
+          stack: appendError.stack
+        });
+
+        // Error recovery: Check if row was created by concurrent request
+        console.log(`🔄 Attempting error recovery: Checking if row exists after failed append...`);
+        const recheckResult = await checkAndGetRowByDriverAndDate(driverName, thaiDate, env, language);
+
+        if (recheckResult.exists && recheckResult.row) {
+          console.log(`✅ Row was created by concurrent request, updating instead...`);
+
+          // Row exists now, update the clock time instead
+          const rowIndex = recheckResult.rowIndex;
+          const timeColumn = type === 'clockIn' ? (hasNewStructure ? 'D' : 'C') : (hasNewStructure ? 'E' : 'D');
+
+          await executeWithRetry(async () => {
+            return await executeWithBackoff(async () => {
+              return await sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: formatSheetRange(targetSheetName, `${timeColumn}${rowIndex}`),
+                valueInputOption: 'RAW',
+                requestBody: {
+                  values: [[timestamp]]
+                }
+              });
+            }, 3, { operation: 'update-recovery', driver: driverName, date: thaiDate });
+          }, 3, { operation: 'update-recovery', driver: driverName, date: thaiDate });
+
+          console.log(`✅ Recovery successful: Updated existing row created by concurrent request`);
+          return {
+            success: true,
+            message: 'Clock event updated after concurrent creation (recovered)',
+            row: rowIndex,
+            timestamp,
+            recovered: true
+          };
+        } else {
+          console.error(`❌ Recovery failed: Row still does not exist after append error`);
+          throw appendError;
+        }
+      }
 
       return {
         success: true,
@@ -744,10 +956,19 @@ export async function handleClockEvent(data) {
         otHours: type === 'clockOut' ? otHours : undefined
       };
     }
-  } catch (error) {
-    console.error('Error handling clock event:', error);
-    throw error;
-  }
+    } catch (error) {
+      console.error(`❌ Error handling clock event:`, {
+        error: error.message,
+        code: error.code,
+        driver: data.driverName,
+        date: data.thaiDate,
+        type: data.type,
+        timestamp: data.timestamp,
+        stack: error.stack
+      });
+      throw error;
+    }
+  });
 }
 
 // Approve most recent unapproved request
