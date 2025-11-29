@@ -356,22 +356,40 @@ function StyledForm() {
       setInvalidFields({});
       return;
     }
-    
+
     // Submit button status is managed by state, not cookies
     setIsSubmitted(false);
-    
-    // Don't auto-load cookies on mount - wait for driver selection
-    setFormData({
-      driverName: '',
-      clockIn: '',
-      clockOut: '',
-      comments: ''
-    });
-    
+
+    // Load saved driver from cookies
+    const savedDriverName = getCookie('driverName');
+
+    if (savedDriverName && savedDriverName.trim()) {
+      // Set the driver name in form
+      setFormData({
+        driverName: savedDriverName,
+        clockIn: '',
+        clockOut: '',
+        comments: ''
+      });
+
+      // Check if this driver has existing data for today
+      setTimeout(() => {
+        checkExistingDataForDriver(savedDriverName.trim());
+      }, 0);
+    } else {
+      // No saved driver - initialize with empty form
+      setFormData({
+        driverName: '',
+        clockIn: '',
+        clockOut: '',
+        comments: ''
+      });
+    }
+
     // Auto-populate day of week based on current date
     const dayOfWeekValue = getDayOfWeekFromThaiDate(today);
     setDayOfWeek(translateDayOfWeek(dayOfWeekValue, browserLang));
-    
+
     // Clear validation errors when form is reset
     setInvalidFields({});
 
